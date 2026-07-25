@@ -650,6 +650,22 @@ public class MediaUtils {
 	}
 
 	/**
+	 * Returns the content:// Uri Android's MediaStore uses for this song, or null
+	 * if the file is not indexed by the MediaStore (e.g. hidden paths, or the
+	 * scanner has not caught up yet).
+	 *
+	 * @param context the context to use
+	 * @param song the song to resolve
+	 * @return the MediaStore content Uri for this song, or null
+	 */
+	public static Uri getContentUriForSong(Context context, Song song) {
+		long mediaStoreId = getAndroidMediaIds(context, song)[0];
+		if (mediaStoreId <= 0)
+			return null;
+		return android.content.ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, mediaStoreId);
+	}
+
+	/**
 	 * Retrieve ID of specified media type for requested song. This works only for
 	 * media-oriented types: {@link #TYPE_ARTIST}, {@link #TYPE_ALBUM}, {@link #TYPE_SONG}
 	 * @param song requested song

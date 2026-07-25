@@ -1722,8 +1722,14 @@ public final class PlaybackService extends Service
 	}
 
 	/**
-	 * Delete all the songs in the given media set. Should be run on a
-	 * background thread.
+	 * Delete all the songs in the given media set using a direct File.delete()
+	 * call. Should be run on a background thread.
+	 *
+	 * NOTE: This only works reliably on Android 9 (API 28) and below. On
+	 * Android 10+ (scoped storage) File.delete() silently fails for files the
+	 * app does not own, so callers on API 29+ should instead use
+	 * {@link MediaUtils#getContentUriForSong} to request deletion via
+	 * MediaStore, then call {@link #finishDeleteMedia} once that is confirmed.
 	 *
 	 * @param type One of the TYPE_* constants, excluding playlists.
 	 * @param id The MediaStore id of the media to delete.
@@ -1745,6 +1751,29 @@ public final class PlaybackService extends Service
 				}
 			}
 			cursor.close();
+		}
+		return count;
+	}
+
+	/**
+	 * Removes the given songs from Vanilla's own library database and from the
+	 * current playback timeline, WITHOUT touching the on-disk file or
+	 * MediaStore. Use this after the system has already confirmed and
+	 * performed the actual file deletion (i.e. after a MediaStore delete
+	 * request returned RESULT_OK). Should be run on a background thread.
+	 *
+	 * @param songIds The Vanilla library ids of the songs that were deleted.
+	 * @return The number of songs removed (== songIds.size()).
+	 */
+	public int finishDeleteMedia(java.util.List<Long> songIds)
+	{
+		int count = 0;
+		if (songIds != null) {
+			for (long songId : songIds) {
+				MediaLibrary.removeSong(getApplicationContext(), songId);
+				mTimeline.removeSong(songId);
+				++count;
+			}
 		}
 		return count;
 	}

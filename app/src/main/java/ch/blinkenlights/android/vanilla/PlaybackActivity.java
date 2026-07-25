@@ -23,25 +23,33 @@
 
 package ch.blinkenlights.android.vanilla;
 
+import ch.blinkenlights.android.medialibrary.MediaLibrary;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Map;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.PendingIntent;
+import android.app.RecoverableSecurityException;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentSender;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.res.Resources;
+import android.database.Cursor;
 import android.media.AudioManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
 import android.os.Process;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.view.ContextMenu;
 import android.view.KeyEvent;
@@ -575,6 +583,19 @@ public abstract class PlaybackActivity extends Activity
 			}
 		} else if (type == MediaUtils.TYPE_PLAYLIST) {
 			Playlist.deletePlaylist(this, id);
+		} else if (Build.VERSION.SDK_INT >= 30) {
+			// Scoped storage: we can't just File.delete() files we don't own.
+			// Ask the system (via MediaStore) to delete them instead; the
+			// actual library cleanup happens in onActivityResult() once that
+			// is confirmed.
+			requestMediaDeletion(type, id);
+			return;
+		} else if (Build.VERSION.SDK_INT == 29) {
+			// No bulk createDeleteRequest() on Android 10 yet: fall back to
+			// per-file ContentResolver.delete(), handling the recoverable
+			// permission prompt for the first file that needs it.
+			requestMediaDeletionApi29(type, id);
+			return;
 		} else {
 			int count = PlaybackService.get(this).deleteMedia(type, id);
 			message = res.getQuantityString(R.plurals.deleted, count, count);
@@ -585,6 +606,198 @@ public abstract class PlaybackActivity extends Activity
 		}
 
 		showToast(message, Toast.LENGTH_SHORT);
+	}
+
+	/**
+	 * Songs waiting on user confirmation of a pending MediaStore delete
+	 * request. Set by {@link #requestMediaDeletion} and consumed by
+	 * {@link #onActivityResult}.
+	 */
+	private ArrayList<Long> mPendingDeleteSongIds;
+	/**
+	 * Request code used to identify the MediaStore delete confirmation
+	 * activity result.
+	 */
+	private static final int REQUEST_DELETE_MEDIA = 0xDE1E;
+
+	/**
+	 * Resolves all songs represented by (type, id) to their MediaStore Uris
+	 * and asks the system to delete them, showing the standard system
+	 * confirmation dialog. Must run on a background thread (called from
+	 * mHandler); the actual IntentSender is launched on the UI thread.
+	 *
+	 * @param type One of the TYPE_* constants, excluding TYPE_FILE / TYPE_PLAYLIST.
+	 * @param id The MediaStore id of the media to delete.
+	 */
+	private void requestMediaDeletion(final int type, final long id)
+	{
+		String[] projection = new String[] { MediaLibrary.SongColumns._ID, MediaLibrary.SongColumns.PATH };
+		Cursor cursor = MediaUtils.buildQuery(type, id, projection, null).runQuery(this);
+
+		final ArrayList<Long> songIds = new ArrayList<>();
+		final ArrayList<Uri> uris = new ArrayList<>();
+		// Files that aren't indexed by Android's MediaStore at all: we have
+		// no scoped-storage-safe way to delete these, so fall back to a
+		// direct attempt (matches pre-API-29 behavior for just these files).
+		final ArrayList<Long> untrackedDeletedIds = new ArrayList<>();
+
+		if (cursor != null) {
+			while (cursor.moveToNext()) {
+				long songId = cursor.getLong(0);
+				String path = cursor.getString(1);
+				Song tmp = new Song(-1);
+				tmp.path = path;
+				Uri contentUri = MediaUtils.getContentUriForSong(this, tmp);
+				if (contentUri != null) {
+					songIds.add(songId);
+					uris.add(contentUri);
+				} else if (new File(path).delete()) {
+					untrackedDeletedIds.add(songId);
+				}
+			}
+			cursor.close();
+		}
+
+		if (!untrackedDeletedIds.isEmpty()) {
+			PlaybackService.get(this).finishDeleteMedia(untrackedDeletedIds);
+		}
+
+		if (uris.isEmpty()) {
+			final int finalUntracked = untrackedDeletedIds.size();
+			runOnUiThread(new Runnable() {
+				@Override
+				public void run() {
+					String message = getResources().getQuantityString(R.plurals.deleted, finalUntracked, finalUntracked);
+					showToast(message, Toast.LENGTH_SHORT);
+				}
+			});
+			return;
+		}
+
+		final PendingIntent deleteRequest;
+		try {
+			deleteRequest = MediaStore.createDeleteRequest(getContentResolver(), uris);
+		} catch (Exception e) {
+			Log.e("VanillaMusic", "Failed to create MediaStore delete request", e);
+			showToast(getResources().getQuantityString(R.plurals.deleted, 0, 0), Toast.LENGTH_SHORT);
+			return;
+		}
+
+		mPendingDeleteSongIds = songIds;
+		runOnUiThread(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					startIntentSenderForResult(deleteRequest.getIntentSender(), REQUEST_DELETE_MEDIA, null, 0, 0, 0);
+				} catch (IntentSender.SendIntentException e) {
+					Log.e("VanillaMusic", "Failed to launch delete confirmation", e);
+					mPendingDeleteSongIds = null;
+				}
+			}
+		});
+	}
+
+	/**
+	 * Android 10 (API 29) equivalent of {@link #requestMediaDeletion}.
+	 * MediaStore.createDeleteRequest() doesn't exist yet on this version, so
+	 * songs are deleted one at a time via ContentResolver.delete(); the first
+	 * one lacking permission triggers the system's recoverable-permission
+	 * prompt. Any songs after that point are left for the user to retry.
+	 * Must run on a background thread (called from mHandler).
+	 */
+	private void requestMediaDeletionApi29(final int type, final long id)
+	{
+		String[] projection = new String[] { MediaLibrary.SongColumns._ID, MediaLibrary.SongColumns.PATH };
+		Cursor cursor = MediaUtils.buildQuery(type, id, projection, null).runQuery(this);
+
+		final ArrayList<Long> confirmedIds = new ArrayList<>();
+
+		if (cursor != null) {
+			while (cursor.moveToNext()) {
+				long songId = cursor.getLong(0);
+				String path = cursor.getString(1);
+				Song tmp = new Song(-1);
+				tmp.path = path;
+				Uri contentUri = MediaUtils.getContentUriForSong(this, tmp);
+
+				if (contentUri == null) {
+					// Not indexed by MediaStore: only option is a direct delete.
+					if (new File(path).delete())
+						confirmedIds.add(songId);
+					continue;
+				}
+
+				try {
+					if (getContentResolver().delete(contentUri, null, null) > 0) {
+						confirmedIds.add(songId);
+					}
+				} catch (RecoverableSecurityException e) {
+					// Clean up what we've confirmed so far, then ask for
+					// permission on this one; remaining (unprocessed) songs
+					// are simply left in the library for the user to retry.
+					mHandler.post(new Runnable() {
+						@Override
+						public void run() {
+							PlaybackService.get(PlaybackActivity.this).finishDeleteMedia(confirmedIds);
+						}
+					});
+					mPendingDeleteSongIds = new ArrayList<>();
+					mPendingDeleteSongIds.add(songId);
+					final IntentSender sender = e.getUserAction().getActionIntent().getIntentSender();
+					runOnUiThread(new Runnable() {
+						@Override
+						public void run() {
+							try {
+								startIntentSenderForResult(sender, REQUEST_DELETE_MEDIA, null, 0, 0, 0);
+							} catch (IntentSender.SendIntentException se) {
+								Log.e("VanillaMusic", "Failed to launch delete confirmation", se);
+								mPendingDeleteSongIds = null;
+							}
+						}
+					});
+					cursor.close();
+					return;
+				}
+			}
+			cursor.close();
+		}
+
+		final int count = confirmedIds.size();
+		mHandler.post(new Runnable() {
+			@Override
+			public void run() {
+				PlaybackService.get(PlaybackActivity.this).finishDeleteMedia(confirmedIds);
+				runOnUiThread(new Runnable() {
+					@Override
+					public void run() {
+						String message = getResources().getQuantityString(R.plurals.deleted, count, count);
+						showToast(message, Toast.LENGTH_SHORT);
+					}
+				});
+			}
+		});
+	}
+
+	@Override
+	protected void onActivityResult(int requestCode, int resultCode, Intent data)
+	{
+		if (requestCode == REQUEST_DELETE_MEDIA) {
+			final ArrayList<Long> songIds = mPendingDeleteSongIds;
+			mPendingDeleteSongIds = null;
+			if (resultCode == RESULT_OK && songIds != null) {
+				// Do the actual library/timeline cleanup off the UI thread.
+				mHandler.post(new Runnable() {
+					@Override
+					public void run() {
+						int count = PlaybackService.get(PlaybackActivity.this).finishDeleteMedia(songIds);
+						String message = getResources().getQuantityString(R.plurals.deleted, count, count);
+						showToast(message, Toast.LENGTH_SHORT);
+					}
+				});
+			}
+			return;
+		}
+		super.onActivityResult(requestCode, resultCode, data);
 	}
 
 	/**

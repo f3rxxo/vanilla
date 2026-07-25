@@ -24,6 +24,11 @@ THE SOFTWARE.
 	xmlns:android="http://schemas.android.com/apk/res/android"
 	xmlns:vanilla="http://schemas.android.com/apk/res-auto"
 	android:persistent="true">
+	<CheckBoxPreference
+		android:defaultValue="false"
+		android:key="smart_playlists_enabled"
+		android:title="@string/smart_playlists_title"
+		android:summary="@string/smart_playlists_summary" />
 	<ch.blinkenlights.android.vanilla.SeekBarPreference
 		android:key="playcounts_autoplaylist"
 		android:negativeButtonText="@null"

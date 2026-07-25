@@ -33,6 +33,7 @@ public class MediaSchema {
 	  + MediaLibrary.SongColumns.ALBUM_ID     +" INTEGER NOT NULL, "
 	  + MediaLibrary.SongColumns.PLAYCOUNT    +" INTEGER NOT NULL DEFAULT 0, "
 	  + MediaLibrary.SongColumns.SKIPCOUNT    +" INTEGER NOT NULL DEFAULT 0, "
+	  + MediaLibrary.SongColumns.LASTPLAYED   +" INTEGER NOT NULL DEFAULT 0, "
 	  + MediaLibrary.SongColumns.MTIME        +" TIMESTAMP DEFAULT (strftime('%s', CURRENT_TIMESTAMP)), "
 	  + MediaLibrary.SongColumns.DURATION     +" INTEGER NOT NULL, "
 	  + MediaLibrary.SongColumns.PATH         +" VARCHAR(4096) NOT NULL, "
@@ -363,6 +364,10 @@ public class MediaSchema {
 
 		if (oldVersion < 20190210) {
 			dbh.execSQL(VIEW_CREATE_PLAYLISTS);
+		}
+
+		if (oldVersion < 20260725) {
+			dbh.execSQL("ALTER TABLE "+MediaLibrary.TABLE_SONGS+" ADD COLUMN "+MediaLibrary.SongColumns.LASTPLAYED+" INTEGER NOT NULL DEFAULT 0 ");
 		}
 	}
 

@@ -399,7 +399,12 @@ public class MediaLibrary  {
 	public static void updateSongPlayCounts(Context context, long id, boolean played) {
 		final String column = played ? MediaLibrary.SongColumns.PLAYCOUNT : MediaLibrary.SongColumns.SKIPCOUNT;
 		String selection = MediaLibrary.SongColumns._ID+"="+id;
-		getBackend(context).execSQL("UPDATE "+MediaLibrary.TABLE_SONGS+" SET "+column+"="+column+"+1 WHERE "+selection);
+		String sql = "UPDATE "+MediaLibrary.TABLE_SONGS+" SET "+column+"="+column+"+1";
+		if (played) {
+			sql += ", "+MediaLibrary.SongColumns.LASTPLAYED+"=strftime('%s', CURRENT_TIMESTAMP)";
+		}
+		sql += " WHERE "+selection;
+		getBackend(context).execSQL(sql);
 	}
 
 	/**
@@ -657,6 +662,10 @@ public class MediaLibrary  {
 		 * How often the song was skipped
 		 */
 		String SKIPCOUNT = "skipcount";
+		/**
+		 * Unix timestamp (seconds) of when this song was last played, or 0 if never played
+		 */
+		String LASTPLAYED = "lastplayed";
 		/**
 		 * The duration of this song
 		 */

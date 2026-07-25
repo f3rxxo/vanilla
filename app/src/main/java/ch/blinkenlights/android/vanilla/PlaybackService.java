@@ -402,6 +402,7 @@ public final class PlaybackService extends Service
 	 * Amount of songs included in our auto playlist
 	 */
 	private int mAutoPlPlaycounts;
+	private boolean mSmartPlaylistsEnabled;
 	/**
 	 * Enables or disables Replay Gain
 	 */
@@ -490,6 +491,19 @@ public final class PlaybackService extends Service
 		mReadaheadEnabled = settings.getBoolean(PrefKeys.ENABLE_READAHEAD, PrefDefaults.ENABLE_READAHEAD);
 
 		mAutoPlPlaycounts = settings.getInt(PrefKeys.AUTOPLAYLIST_PLAYCOUNTS, PrefDefaults.AUTOPLAYLIST_PLAYCOUNTS);
+		mSmartPlaylistsEnabled = settings.getBoolean(PrefKeys.SMART_PLAYLISTS_ENABLED, PrefDefaults.SMART_PLAYLISTS_ENABLED);
+		if (mSmartPlaylistsEnabled) {
+			// onCreate() runs on the main thread and mHandler isn't set up
+			// yet at this point, so do this one-time initial refresh on a
+			// plain background thread instead.
+			final Context appContext = getApplicationContext();
+			new Thread(new Runnable() {
+				@Override
+				public void run() {
+					SmartPlaylistHelper.refreshSmartPlaylists(appContext);
+				}
+			}).start();
+		}
 
 		PowerManager powerManager = (PowerManager)getSystemService(POWER_SERVICE);
 		mWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VanillaMusic:PlaybackService");
@@ -928,6 +942,17 @@ public final class PlaybackService extends Service
 			mReadaheadEnabled = settings.getBoolean(PrefKeys.ENABLE_READAHEAD, PrefDefaults.ENABLE_READAHEAD);
 		} else if (PrefKeys.AUTOPLAYLIST_PLAYCOUNTS.equals(key)) {
 			mAutoPlPlaycounts = settings.getInt(PrefKeys.AUTOPLAYLIST_PLAYCOUNTS, PrefDefaults.AUTOPLAYLIST_PLAYCOUNTS);
+		} else if (PrefKeys.SMART_PLAYLISTS_ENABLED.equals(key)) {
+			mSmartPlaylistsEnabled = settings.getBoolean(PrefKeys.SMART_PLAYLISTS_ENABLED, PrefDefaults.SMART_PLAYLISTS_ENABLED);
+			if (mSmartPlaylistsEnabled) {
+				final Context appContext = getApplicationContext();
+				new Thread(new Runnable() {
+					@Override
+					public void run() {
+						SmartPlaylistHelper.refreshSmartPlaylists(appContext);
+					}
+				}).start();
+			}
 		} else if (PrefKeys.PLAYLIST_SYNC_MODE.equals(key) || PrefKeys.PLAYLIST_SYNC_FOLDER.equals(key) || PrefKeys.PLAYLIST_EXPORT_RELATIVE_PATHS.equals(key)) {
 			int syncMode = Integer.parseInt(settings.getString(PrefKeys.PLAYLIST_SYNC_MODE, PrefDefaults.PLAYLIST_SYNC_MODE));
 			boolean exportRelativePaths = settings.getBoolean(PrefKeys.PLAYLIST_EXPORT_RELATIVE_PATHS, PrefDefaults.PLAYLIST_EXPORT_RELATIVE_PATHS);
@@ -1615,6 +1640,9 @@ public final class PlaybackService extends Service
 				long id = Playlist.createPlaylist(context, playlistName);
 				ArrayList<Long> items = PlayCountsHelper.getTopSongs(context, mAutoPlPlaycounts);
 				Playlist.addToPlaylist(context, id, items);
+			}
+			if (mSmartPlaylistsEnabled && Math.random() > 0.8) {
+				SmartPlaylistHelper.refreshSmartPlaylists(getApplicationContext());
 			}
 			break;
 		case MSG_SHOW_TOAST:

@@ -30,6 +30,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.BitmapShader;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -58,9 +59,10 @@ public final class CoverBitmap {
 	 */
 	public static final int STYLE_NO_INFO = 2;
 	/**
-	 * Draw the cover cropped edge-to-edge to fill the entire view, with no
-	 * letterboxing and no song info drawn on top (info is instead drawn by
-	 * separate overlay views, e.g. in full_playback.xml).
+	 * Like STYLE_NO_INFO (cover kept at its natural, fit-inside size - never
+	 * upscaled or cropped), but intended to be shown over a dominant-color
+	 * background (see {@link #getDominantColor}) drawn separately by the
+	 * caller so it can extend edge-to-edge behind system bars.
 	 */
 	public static final int STYLE_FULLSCREEN = 3;
 	/**
@@ -137,38 +139,37 @@ public final class CoverBitmap {
 		case STYLE_INFO_BELOW:
 			return createSeparatedBitmap(context, coverArt, song, width, height);
 		case STYLE_NO_INFO:
-			return createScaledBitmap(coverArt, width, height);
 		case STYLE_FULLSCREEN:
-			return createCroppedBitmap(coverArt, width, height);
+			return createScaledBitmap(coverArt, width, height);
 		default:
 			throw new IllegalArgumentException("Invalid bitmap type given: " + style);
 		}
 	}
 
 	/**
-	 * Scales the source bitmap so it fully covers the given dimensions,
-	 * cropping any overflow, and centers the result. Unlike
-	 * {@link #createScaledBitmap}, which fits the whole image inside the
-	 * bounds (letterboxing), this fills the bounds completely.
+	 * Extracts an approximate dominant color from a bitmap by downscaling it
+	 * to a single pixel (a cheap stand-in for a full palette extraction) and
+	 * darkening the result slightly so it stays a usable background behind
+	 * light text.
+	 *
+	 * @param source the bitmap to sample, may be null
+	 * @return an opaque ARGB color; a dark gray fallback if source is null
 	 */
-	private static Bitmap createCroppedBitmap(Bitmap source, int width, int height)
-	{
-		if (source == null || width < 1 || height < 1)
-			return null;
+	public static int getDominantColor(Bitmap source) {
+		if (source == null || source.getWidth() < 1 || source.getHeight() < 1)
+			return 0xFF202020;
 
-		int sourceWidth = source.getWidth();
-		int sourceHeight = source.getHeight();
-		float scale = Math.max((float)width / sourceWidth, (float)height / sourceHeight);
-		int scaledWidth = (int)(sourceWidth * scale);
-		int scaledHeight = (int)(sourceHeight * scale);
+		Bitmap tiny = Bitmap.createScaledBitmap(source, 1, 1, true);
+		int color = tiny.getPixel(0, 0);
+		tiny.recycle();
 
-		Bitmap scaled = Bitmap.createScaledBitmap(source, scaledWidth, scaledHeight, true);
-		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-		Canvas canvas = new Canvas(bitmap);
-		int left = (width - scaledWidth) / 2;
-		int top = (height - scaledHeight) / 2;
-		canvas.drawBitmap(scaled, left, top, new Paint());
-		return bitmap;
+		// Darken so light/white text and controls stay legible on top,
+		// regardless of how bright the source artwork is.
+		float darken = 0.55f;
+		int r = (int)(Color.red(color) * darken);
+		int g = (int)(Color.green(color) * darken);
+		int b = (int)(Color.blue(color) * darken);
+		return Color.rgb(r, g, b);
 	}
 
 	private static Bitmap createOverlappingBitmap(Context context, Bitmap cover, Song song, int width, int height)

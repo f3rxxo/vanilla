@@ -62,7 +62,7 @@ public class AlbumArtWallpaper {
 				desiredHeight = cover.getHeight();
 			}
 
-			Bitmap wallpaper = cropToFill(cover, desiredWidth, desiredHeight);
+			Bitmap wallpaper = composeFullscreenBitmap(cover, desiredWidth, desiredHeight);
 			if (wallpaper == null)
 				return;
 
@@ -84,22 +84,27 @@ public class AlbumArtWallpaper {
 	}
 
 	/**
-	 * Scales the source bitmap so it fully covers the given dimensions,
-	 * cropping any overflow, and centers the result.
+	 * Composes a wallpaper-sized bitmap: the cover art kept at its natural,
+	 * fit-inside size (never upscaled or cropped) and centered over a
+	 * background filled with the cover's dominant color, extending to the
+	 * full given dimensions edge-to-edge. Matches the same treatment used
+	 * by the in-app fullscreen artwork display mode.
 	 */
-	private static Bitmap cropToFill(Bitmap source, int width, int height) {
+	private static Bitmap composeFullscreenBitmap(Bitmap source, int width, int height) {
 		if (source == null || width < 1 || height < 1)
 			return null;
 
+		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+		Canvas canvas = new Canvas(bitmap);
+		canvas.drawColor(CoverBitmap.getDominantColor(source));
+
 		int sourceWidth = source.getWidth();
 		int sourceHeight = source.getHeight();
-		float scale = Math.max((float)width / sourceWidth, (float)height / sourceHeight);
+		float scale = Math.min((float)width / sourceWidth, (float)height / sourceHeight);
 		int scaledWidth = Math.round(sourceWidth * scale);
 		int scaledHeight = Math.round(sourceHeight * scale);
 
 		Bitmap scaled = Bitmap.createScaledBitmap(source, scaledWidth, scaledHeight, true);
-		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-		Canvas canvas = new Canvas(bitmap);
 		int left = (width - scaledWidth) / 2;
 		int top = (height - scaledHeight) / 2;
 		canvas.drawBitmap(scaled, left, top, new Paint());

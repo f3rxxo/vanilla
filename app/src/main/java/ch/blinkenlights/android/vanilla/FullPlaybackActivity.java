@@ -32,6 +32,8 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Message;
 import android.util.Log;
+import android.graphics.Color;
+import android.os.Build;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -39,6 +41,8 @@ import android.view.MenuItem;
 import android.view.SubMenu;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TableLayout;
 import android.widget.TableRow;
@@ -135,11 +139,15 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 			break;
 		case DISPLAY_INFO_FULLSCREEN:
 			coverStyle = CoverBitmap.STYLE_FULLSCREEN;
-			layout = R.layout.full_playback;
+			layout = R.layout.full_playback_fullscreen;
 			break;
 		}
 
 		setContentView(layout);
+
+		if (displayMode == DISPLAY_INFO_FULLSCREEN) {
+			setupEdgeToEdge();
+		}
 
 		CoverView coverView = (CoverView)findViewById(R.id.cover_view);
 		coverView.setup(mLooper, this, coverStyle);
@@ -187,6 +195,49 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 
 		mCoverPressAction = Action.getAction(settings, PrefKeys.COVER_PRESS_ACTION, PrefDefaults.COVER_PRESS_ACTION);
 		mCoverLongPressAction = Action.getAction(settings, PrefKeys.COVER_LONGPRESS_ACTION, PrefDefaults.COVER_LONGPRESS_ACTION);
+	}
+
+	/**
+	 * Extends the window behind the system status/navigation bars and makes
+	 * them transparent, so the fullscreen artwork background reaches the
+	 * true screen edges instead of stopping at the system bar insets.
+	 */
+	private void setupEdgeToEdge()
+	{
+		Window window = getWindow();
+		window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+		window.getDecorView().setSystemUiVisibility(
+			View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+			| View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+			| View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+		window.setStatusBarColor(Color.TRANSPARENT);
+		if (Build.VERSION.SDK_INT >= 21) {
+			window.setNavigationBarColor(Color.TRANSPARENT);
+		}
+	}
+
+	/**
+	 * Extracts the dominant color of the given song's cover art and applies
+	 * it as the window background, so the fullscreen artwork mode shows a
+	 * color-matched backdrop instead of the theme's default background.
+	 * Bitmap decoding happens on a background thread.
+	 *
+	 * @param song the song whose cover art should be sampled, may be null
+	 */
+	private void updateFullscreenBackground(final Song song)
+	{
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				final int color = CoverBitmap.getDominantColor(song == null ? null : song.getLargeCover(FullPlaybackActivity.this));
+				runOnUiThread(new Runnable() {
+					@Override
+					public void run() {
+						getWindow().getDecorView().setBackgroundColor(color);
+					}
+				});
+			}
+		}).start();
 	}
 
 	/**
@@ -261,6 +312,10 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 		}
 
 		mCurrentSong = song;
+
+		if (mDisplayMode == DISPLAY_INFO_FULLSCREEN) {
+			updateFullscreenBackground(song);
+		}
 
 		mHandler.sendEmptyMessage(MSG_LOAD_FAVOURITE_INFO);
 

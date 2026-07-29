@@ -36,8 +36,6 @@ public class SmartPlaylistHelper {
 
 	/** Songs added in the last 14 days count as "recently added". */
 	private static final long RECENTLY_ADDED_WINDOW_SECONDS = 14L * 24 * 60 * 60;
-	/** Only consider plays in the last 30 days for "on repeat". */
-	private static final long ON_REPEAT_WINDOW_SECONDS = 30L * 24 * 60 * 60;
 	/** Songs need to have existed at least this long to count as a "hidden gem" candidate. */
 	private static final long HIDDEN_GEM_MIN_AGE_SECONDS = 14L * 24 * 60 * 60;
 	/** Songs with at most this many plays are eligible as "hidden gems". */
@@ -71,26 +69,40 @@ public class SmartPlaylistHelper {
 		return collectIds(cursor, limit);
 	}
 
+	/** "This week" window, in seconds. */
+	public static final long WINDOW_THIS_WEEK = 7L * 24 * 60 * 60;
+	/** "This month" window, in seconds. */
+	public static final long WINDOW_THIS_MONTH = 30L * 24 * 60 * 60;
+
 	/**
-	 * Songs played most often within the last {@link #ON_REPEAT_WINDOW_SECONDS}.
-	 * Falls back to all-time playcount if too few songs qualify, so the
-	 * playlist isn't left near-empty for users without much recent listening.
+	 * Songs played most often within the given time window, based on actual
+	 * per-play history (not just the running lifetime total), most played
+	 * first.
+	 *
+	 * @param limit maximum number of songs to return, or 0 for no limit
+	 * @param windowSeconds how far back to look, e.g. {@link #WINDOW_THIS_WEEK}
+	 */
+	public static ArrayList<Long> getOnRepeatSongsForWindow(Context context, int limit, long windowSeconds) {
+		long cutoff = nowSeconds() - windowSeconds;
+		String sql = "SELECT " + MediaLibrary.PlayHistoryColumns.SONG_ID
+			+ " FROM " + MediaLibrary.TABLE_PLAY_HISTORY
+			+ " WHERE " + MediaLibrary.PlayHistoryColumns.TIMESTAMP + " > ?"
+			+ " AND " + MediaLibrary.PlayHistoryColumns.SONG_ID + " IN (SELECT " + MediaLibrary.SongColumns._ID + " FROM " + MediaLibrary.TABLE_SONGS + ")"
+			+ " GROUP BY " + MediaLibrary.PlayHistoryColumns.SONG_ID
+			+ " ORDER BY COUNT(*) DESC"
+			+ (limit > 0 ? " LIMIT " + limit : "");
+		Cursor cursor = MediaLibrary.rawQuery(context, sql, new String[]{ String.valueOf(cutoff) });
+		return collectIds(cursor, limit);
+	}
+
+	/**
+	 * All-time most played songs. Uses the exact lifetime playcount rather
+	 * than play_history, since that total is already tracked precisely.
 	 *
 	 * @param limit maximum number of songs to return, or 0 for no limit
 	 */
-	public static ArrayList<Long> getOnRepeatSongs(Context context, int limit) {
-		long cutoff = nowSeconds() - ON_REPEAT_WINDOW_SECONDS;
-		String selection = MediaLibrary.SongColumns.PLAYCOUNT + " > 0 AND " + MediaLibrary.SongColumns.LASTPLAYED + " > " + cutoff;
-		String order = MediaLibrary.SongColumns.PLAYCOUNT + " DESC";
-		Cursor cursor = MediaLibrary.queryLibrary(context, MediaLibrary.TABLE_SONGS,
-			new String[]{ MediaLibrary.SongColumns._ID }, selection, null, order);
-		ArrayList<Long> result = collectIds(cursor, limit);
-
-		if (result.size() < 5) {
-			// Not enough recent listening data yet: fall back to all-time top songs.
-			result = PlayCountsHelper.getTopSongs(context, limit <= 0 ? 100 : limit);
-		}
-		return result;
+	public static ArrayList<Long> getOnRepeatSongsAllTime(Context context, int limit) {
+		return PlayCountsHelper.getTopSongs(context, limit <= 0 ? 100 : limit);
 	}
 
 	/**
@@ -139,8 +151,12 @@ public class SmartPlaylistHelper {
 	public static void refreshSmartPlaylists(Context context) {
 		refreshOne(context, context.getString(R.string.smart_playlist_recently_played),
 			getRecentlyPlayedSongs(context, SMART_PLAYLIST_LIMIT));
-		refreshOne(context, context.getString(R.string.smart_playlist_on_repeat),
-			getOnRepeatSongs(context, SMART_PLAYLIST_LIMIT));
+		refreshOne(context, context.getString(R.string.smart_playlist_on_repeat_week),
+			getOnRepeatSongsForWindow(context, SMART_PLAYLIST_LIMIT, WINDOW_THIS_WEEK));
+		refreshOne(context, context.getString(R.string.smart_playlist_on_repeat_month),
+			getOnRepeatSongsForWindow(context, SMART_PLAYLIST_LIMIT, WINDOW_THIS_MONTH));
+		refreshOne(context, context.getString(R.string.smart_playlist_on_repeat_alltime),
+			getOnRepeatSongsAllTime(context, SMART_PLAYLIST_LIMIT));
 		refreshOne(context, context.getString(R.string.smart_playlist_hidden_gems),
 			getHiddenGemSongs(context, SMART_PLAYLIST_LIMIT));
 		refreshOne(context, context.getString(R.string.smart_playlist_recently_added),

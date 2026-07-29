@@ -1,0 +1,109 @@
+/*
+ * Copyright (C) 2026 Kiko
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package ch.blinkenlights.android.vanilla;
+
+import android.app.WallpaperManager;
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.os.Build;
+import android.util.Log;
+
+/**
+ * Sets the currently playing song's album art as the lock screen wallpaper.
+ * Only touches the lock screen wallpaper (WallpaperManager.FLAG_LOCK on
+ * Android N+), never the home screen wallpaper.
+ */
+public class AlbumArtWallpaper {
+
+	private static final String TAG = "VanillaMusic";
+
+	/**
+	 * Updates the lock screen wallpaper to the given song's album art, if
+	 * one is available. Silently does nothing if the song has no cover art,
+	 * or if setting the wallpaper fails for any reason (e.g. permission
+	 * revoked, or the device does not support a separate lock wallpaper).
+	 * Involves bitmap decoding and IPC, so this should be called from a
+	 * background thread.
+	 *
+	 * @param context the context to use
+	 * @param song the song whose cover art should become the wallpaper
+	 */
+	public static void update(Context context, Song song) {
+		if (song == null)
+			return;
+
+		Bitmap cover = song.getLargeCover(context);
+		if (cover == null)
+			return;
+
+		try {
+			WallpaperManager manager = WallpaperManager.getInstance(context);
+			int desiredWidth = manager.getDesiredMinimumWidth();
+			int desiredHeight = manager.getDesiredMinimumHeight();
+			if (desiredWidth <= 0 || desiredHeight <= 0) {
+				desiredWidth = cover.getWidth();
+				desiredHeight = cover.getHeight();
+			}
+
+			Bitmap wallpaper = cropToFill(cover, desiredWidth, desiredHeight);
+			if (wallpaper == null)
+				return;
+
+			if (Build.VERSION.SDK_INT >= 24) {
+				// Android 7+: sets only the lock screen wallpaper, leaving
+				// the home screen wallpaper untouched.
+				manager.setBitmap(wallpaper, null, true, WallpaperManager.FLAG_LOCK);
+			} else {
+				// No separate lock screen wallpaper API pre-N: falls back
+				// to setting the regular (single) system wallpaper.
+				manager.setBitmap(wallpaper);
+			}
+		} catch (Exception e) {
+			// Wallpaper permission may have been revoked, or the device may
+			// not support this - this is a cosmetic feature, so just log
+			// and move on rather than disrupting playback.
+			Log.w(TAG, "Failed to set album art wallpaper", e);
+		}
+	}
+
+	/**
+	 * Scales the source bitmap so it fully covers the given dimensions,
+	 * cropping any overflow, and centers the result.
+	 */
+	private static Bitmap cropToFill(Bitmap source, int width, int height) {
+		if (source == null || width < 1 || height < 1)
+			return null;
+
+		int sourceWidth = source.getWidth();
+		int sourceHeight = source.getHeight();
+		float scale = Math.max((float)width / sourceWidth, (float)height / sourceHeight);
+		int scaledWidth = Math.round(sourceWidth * scale);
+		int scaledHeight = Math.round(sourceHeight * scale);
+
+		Bitmap scaled = Bitmap.createScaledBitmap(source, scaledWidth, scaledHeight, true);
+		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+		Canvas canvas = new Canvas(bitmap);
+		int left = (width - scaledWidth) / 2;
+		int top = (height - scaledHeight) / 2;
+		canvas.drawBitmap(scaled, left, top, new Paint());
+		return bitmap;
+	}
+
+}

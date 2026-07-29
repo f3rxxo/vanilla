@@ -55,6 +55,7 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 	public static final int DISPLAY_INFO_OVERLAP = 0;
 	public static final int DISPLAY_INFO_BELOW = 1;
 	public static final int DISPLAY_INFO_WIDGETS = 2;
+	public static final int DISPLAY_INFO_FULLSCREEN = 3;
 
 	private TextView mOverlayText;
 
@@ -131,6 +132,10 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 			break;
 		case DISPLAY_INFO_BELOW:
 			coverStyle = CoverBitmap.STYLE_INFO_BELOW;
+			break;
+		case DISPLAY_INFO_FULLSCREEN:
+			coverStyle = CoverBitmap.STYLE_FULLSCREEN;
+			layout = R.layout.full_playback;
 			break;
 		}
 

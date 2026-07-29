@@ -41,6 +41,18 @@ public class MediaSchema {
 	  + ");";
 
 	/**
+	 * SQL Schema of `play_history' table: one row per completed play,
+	 * used to compute time-windowed play counts (e.g. "this week").
+	 */
+	private static final String DATABASE_CREATE_PLAY_HISTORY = "CREATE TABLE "+ MediaLibrary.TABLE_PLAY_HISTORY + " ("
+	  + MediaLibrary.PlayHistoryColumns.SONG_ID   +" INTEGER NOT NULL, "
+	  + MediaLibrary.PlayHistoryColumns.TIMESTAMP +" INTEGER NOT NULL "
+	  + ");";
+
+	private static final String DATABASE_CREATE_PLAY_HISTORY_INDEX = "CREATE INDEX IF NOT EXISTS play_history_timestamp_idx ON "
+	  + MediaLibrary.TABLE_PLAY_HISTORY + " (" + MediaLibrary.PlayHistoryColumns.TIMESTAMP + ");";
+
+	/**
 	 * SQL Schema of `albums' table
 	 */
 	private static final String DATABASE_CREATE_ALBUMS = "CREATE TABLE "+ MediaLibrary.TABLE_ALBUMS + " ("
@@ -259,6 +271,8 @@ public class MediaSchema {
 	 */
 	public static void createDatabaseSchema(SQLiteDatabase dbh) {
 		dbh.execSQL(DATABASE_CREATE_SONGS);
+		dbh.execSQL(DATABASE_CREATE_PLAY_HISTORY);
+		dbh.execSQL(DATABASE_CREATE_PLAY_HISTORY_INDEX);
 		dbh.execSQL(DATABASE_CREATE_ALBUMS);
 		dbh.execSQL(DATABASE_CREATE_CONTRIBUTORS);
 		dbh.execSQL(DATABASE_CREATE_CONTRIBUTORS_SONGS);
@@ -368,6 +382,8 @@ public class MediaSchema {
 
 		if (oldVersion < 20260725) {
 			dbh.execSQL("ALTER TABLE "+MediaLibrary.TABLE_SONGS+" ADD COLUMN "+MediaLibrary.SongColumns.LASTPLAYED+" INTEGER NOT NULL DEFAULT 0 ");
+			dbh.execSQL(DATABASE_CREATE_PLAY_HISTORY);
+			dbh.execSQL(DATABASE_CREATE_PLAY_HISTORY_INDEX);
 		}
 	}
 

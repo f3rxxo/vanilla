@@ -58,6 +58,12 @@ public final class CoverBitmap {
 	 */
 	public static final int STYLE_NO_INFO = 2;
 	/**
+	 * Draw the cover cropped edge-to-edge to fill the entire view, with no
+	 * letterboxing and no song info drawn on top (info is instead drawn by
+	 * separate overlay views, e.g. in full_playback.xml).
+	 */
+	public static final int STYLE_FULLSCREEN = 3;
+	/**
 	 * Whether or not to debug painting operations.
 	 */
 	private static final boolean DEBUG_PAINT = false;
@@ -132,9 +138,37 @@ public final class CoverBitmap {
 			return createSeparatedBitmap(context, coverArt, song, width, height);
 		case STYLE_NO_INFO:
 			return createScaledBitmap(coverArt, width, height);
+		case STYLE_FULLSCREEN:
+			return createCroppedBitmap(coverArt, width, height);
 		default:
 			throw new IllegalArgumentException("Invalid bitmap type given: " + style);
 		}
+	}
+
+	/**
+	 * Scales the source bitmap so it fully covers the given dimensions,
+	 * cropping any overflow, and centers the result. Unlike
+	 * {@link #createScaledBitmap}, which fits the whole image inside the
+	 * bounds (letterboxing), this fills the bounds completely.
+	 */
+	private static Bitmap createCroppedBitmap(Bitmap source, int width, int height)
+	{
+		if (source == null || width < 1 || height < 1)
+			return null;
+
+		int sourceWidth = source.getWidth();
+		int sourceHeight = source.getHeight();
+		float scale = Math.max((float)width / sourceWidth, (float)height / sourceHeight);
+		int scaledWidth = (int)(sourceWidth * scale);
+		int scaledHeight = (int)(sourceHeight * scale);
+
+		Bitmap scaled = Bitmap.createScaledBitmap(source, scaledWidth, scaledHeight, true);
+		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+		Canvas canvas = new Canvas(bitmap);
+		int left = (width - scaledWidth) / 2;
+		int top = (height - scaledHeight) / 2;
+		canvas.drawBitmap(scaled, left, top, new Paint());
+		return bitmap;
 	}
 
 	private static Bitmap createOverlappingBitmap(Context context, Bitmap cover, Song song, int width, int height)

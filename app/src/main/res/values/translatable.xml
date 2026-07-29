@@ -224,6 +224,8 @@ THE SOFTWARE.
 	<string name="playback_on_startup_title">Open on startup</string>
 	<string name="playback_on_startup_summary">Open playback view on startup</string>
 	<string name="display_mode_title">Display mode</string>
+	<string name="wallpaper_album_art_title">Album art as lock screen wallpaper</string>
+	<string name="wallpaper_album_art_summary">Sets your lock screen wallpaper to the current song\'s album art. Replaces your existing lock screen wallpaper.</string>
 	<string name="swipe_up_action_title">Swipe up action</string>
 	<string name="swipe_down_action_title">Swipe down action</string>
 	<string name="cover_press_action_title">Cover tap action</string>
@@ -302,6 +304,7 @@ THE SOFTWARE.
 	<string name="info_on_cover">Info on cover art</string>
 	<string name="info_below_cover">Info below cover art</string>
 	<string name="fixed_info">Info fixed at top</string>
+	<string name="fullscreen_art">Fullscreen artwork</string>
 
 	<string name="do_nothing">Do nothing</string>
 	<string name="open_library">Open library</string>
@@ -353,7 +356,9 @@ THE SOFTWARE.
 	<string name="smart_playlists_title">Smart playlists</string>
 	<string name="smart_playlists_summary">Automatically maintain Recently played, On repeat, Hidden gems and Recently added playlists</string>
 	<string name="smart_playlist_recently_played">Recently played</string>
-	<string name="smart_playlist_on_repeat">On repeat</string>
+	<string name="smart_playlist_on_repeat_week">On repeat (This week)</string>
+	<string name="smart_playlist_on_repeat_month">On repeat (This month)</string>
+	<string name="smart_playlist_on_repeat_alltime">On repeat (All time)</string>
 	<string name="smart_playlist_hidden_gems">Hidden gems</string>
 	<string name="smart_playlist_recently_added">Recently added</string>
 

@@ -403,6 +403,7 @@ public final class PlaybackService extends Service
 	 */
 	private int mAutoPlPlaycounts;
 	private boolean mSmartPlaylistsEnabled;
+	private boolean mWallpaperAlbumArt;
 	/**
 	 * Enables or disables Replay Gain
 	 */
@@ -492,6 +493,7 @@ public final class PlaybackService extends Service
 
 		mAutoPlPlaycounts = settings.getInt(PrefKeys.AUTOPLAYLIST_PLAYCOUNTS, PrefDefaults.AUTOPLAYLIST_PLAYCOUNTS);
 		mSmartPlaylistsEnabled = settings.getBoolean(PrefKeys.SMART_PLAYLISTS_ENABLED, PrefDefaults.SMART_PLAYLISTS_ENABLED);
+		mWallpaperAlbumArt = settings.getBoolean(PrefKeys.WALLPAPER_ALBUM_ART, PrefDefaults.WALLPAPER_ALBUM_ART);
 		if (mSmartPlaylistsEnabled) {
 			// onCreate() runs on the main thread and mHandler isn't set up
 			// yet at this point, so do this one-time initial refresh on a
@@ -953,6 +955,18 @@ public final class PlaybackService extends Service
 					}
 				}).start();
 			}
+		} else if (PrefKeys.WALLPAPER_ALBUM_ART.equals(key)) {
+			mWallpaperAlbumArt = settings.getBoolean(PrefKeys.WALLPAPER_ALBUM_ART, PrefDefaults.WALLPAPER_ALBUM_ART);
+			if (mWallpaperAlbumArt) {
+				final Context appContext = getApplicationContext();
+				final Song song = getSong(0);
+				new Thread(new Runnable() {
+					@Override
+					public void run() {
+						AlbumArtWallpaper.update(appContext, song);
+					}
+				}).start();
+			}
 		} else if (PrefKeys.PLAYLIST_SYNC_MODE.equals(key) || PrefKeys.PLAYLIST_SYNC_FOLDER.equals(key) || PrefKeys.PLAYLIST_EXPORT_RELATIVE_PATHS.equals(key)) {
 			int syncMode = Integer.parseInt(settings.getString(PrefKeys.PLAYLIST_SYNC_MODE, PrefDefaults.PLAYLIST_SYNC_MODE));
 			boolean exportRelativePaths = settings.getBoolean(PrefKeys.PLAYLIST_EXPORT_RELATIVE_PATHS, PrefDefaults.PLAYLIST_EXPORT_RELATIVE_PATHS);
@@ -1123,6 +1137,10 @@ public final class PlaybackService extends Service
 			ArrayList<TimelineCallback> list = sCallbacks;
 			for (int i = list.size(); --i != -1; )
 				list.get(i).setSong(uptime, song);
+
+			if (mWallpaperAlbumArt) {
+				AlbumArtWallpaper.update(getApplicationContext(), song);
+			}
 		}
 
 		updateWidgets();

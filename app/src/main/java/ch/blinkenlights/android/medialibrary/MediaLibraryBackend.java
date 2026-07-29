@@ -147,6 +147,16 @@ public class MediaLibraryBackend extends SQLiteOpenHelper {
 	}
 
 	/**
+	 * Wrapper for SQLiteDatabase.rawQuery() function
+	 *
+	 * @param sql the raw sql string
+	 * @param args the arguments to bind to the query, if any
+	 */
+	Cursor rawQuery(String sql, String[] args) {
+		return getReadableDatabase().rawQuery(sql, args);
+	}
+
+	/**
 	 * Wrapper for SQLiteDatabase.insert() function
 	 *
 	 * @param table the table to insert data to

@@ -48,6 +48,7 @@ public class MediaLibrary  {
 	public static final String TABLE_GENRES_SONGS             = "genres_songs";
 	public static final String TABLE_PLAYLISTS                = "playlists";
 	public static final String TABLE_PLAYLISTS_SONGS          = "playlists_songs";
+	public static final String TABLE_PLAY_HISTORY              = "play_history";
 	public static final String VIEW_ARTISTS                   = "_artists";
 	public static final String VIEW_ALBUMARTISTS              = "_albumartists";
 	public static final String VIEW_COMPOSERS                 = "_composers";
@@ -405,6 +406,35 @@ public class MediaLibrary  {
 		}
 		sql += " WHERE "+selection;
 		getBackend(context).execSQL(sql);
+
+		if (played) {
+			getBackend(context).execSQL("INSERT INTO "+MediaLibrary.TABLE_PLAY_HISTORY+" ("
+				+MediaLibrary.PlayHistoryColumns.SONG_ID+", "+MediaLibrary.PlayHistoryColumns.TIMESTAMP+") VALUES ("
+				+id+", strftime('%s', CURRENT_TIMESTAMP))");
+
+			// Occasionally prune history older than a year: we only ever
+			// query 'this week' / 'this month' / all-time windows, so there
+			// is no reason to keep it around forever.
+			if (Math.random() > 0.95) {
+				long cutoff = (System.currentTimeMillis() / 1000) - (365L * 24 * 60 * 60);
+				getBackend(context).execSQL("DELETE FROM "+MediaLibrary.TABLE_PLAY_HISTORY
+					+" WHERE "+MediaLibrary.PlayHistoryColumns.TIMESTAMP+" < "+cutoff);
+			}
+		}
+	}
+
+	/**
+	 * Runs a raw SQL query against the media library database and returns
+	 * the resulting Cursor. Intended for queries that MediaLibrary's normal
+	 * table-based query() helper can't express, such as GROUP BY / COUNT.
+	 * Callers own the returned Cursor and must close it.
+	 *
+	 * @param context the context to use
+	 * @param sql the raw SQL query
+	 * @param args arguments to bind to the query, if any
+	 */
+	public static Cursor rawQuery(Context context, String sql, String[] args) {
+		return getBackend(context).rawQuery(sql, args);
 	}
 
 	/**
@@ -682,6 +712,22 @@ public class MediaLibrary  {
 		 * Various flags of this entry, see SONG_FLAG...
 		 */
 		String FLAGS = "_flags";
+	}
+
+	/**
+	 * Columns of the play_history table: one row per completed play of a
+	 * song, used to compute time-windowed play counts (e.g. "most played
+	 * this week") that a single running total can't answer.
+	 */
+	public interface PlayHistoryColumns {
+		/**
+		 * The id of the song that was played
+		 */
+		String SONG_ID = "song_id";
+		/**
+		 * Unix timestamp (seconds) of when this play happened
+		 */
+		String TIMESTAMP = "timestamp";
 	}
 
 	// Columns of Album entries

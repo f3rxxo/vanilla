@@ -71,6 +71,7 @@ public class PrefKeys {
 	public static final String VOLUME_DURING_DUCKING = "volume_during_ducking";
 	public static final String AUTOPLAYLIST_PLAYCOUNTS = "playcounts_autoplaylist";
 	public static final String SMART_PLAYLISTS_ENABLED = "smart_playlists_enabled";
+	public static final String WALLPAPER_ALBUM_ART = "wallpaper_album_art";
 	public static final String IGNORE_AUDIOFOCUS_LOSS = "ignore_audiofocus_loss";
 	public static final String ENABLE_SCROLL_TO_SONG = "enable_scroll_to_song";
 	public static final String QUEUE_ENABLE_SCROLL_TO_SONG = "queue_enable_scroll_to_song";

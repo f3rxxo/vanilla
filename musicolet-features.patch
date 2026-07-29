@@ -1,0 +1,558 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 5c14e285..5297df7f 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -33,6 +33,7 @@ THE SOFTWARE.
+ 	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+ 	<!-- This is needed for isWiredHeadsetOn() to work in some cases. (bug?) -->
+ 	<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
++	<uses-permission android:name="android.permission.SET_WALLPAPER" />
+ 	<uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+ 	<uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+ 	<!-- Playlist shortcuts -->
+diff --git a/app/src/main/java/ch/blinkenlights/android/medialibrary/MediaLibrary.java b/app/src/main/java/ch/blinkenlights/android/medialibrary/MediaLibrary.java
+index 69749377..7385a9c6 100644
+--- a/app/src/main/java/ch/blinkenlights/android/medialibrary/MediaLibrary.java
++++ b/app/src/main/java/ch/blinkenlights/android/medialibrary/MediaLibrary.java
+@@ -48,6 +48,7 @@ public class MediaLibrary  {
+ 	public static final String TABLE_GENRES_SONGS             = "genres_songs";
+ 	public static final String TABLE_PLAYLISTS                = "playlists";
+ 	public static final String TABLE_PLAYLISTS_SONGS          = "playlists_songs";
++	public static final String TABLE_PLAY_HISTORY              = "play_history";
+ 	public static final String VIEW_ARTISTS                   = "_artists";
+ 	public static final String VIEW_ALBUMARTISTS              = "_albumartists";
+ 	public static final String VIEW_COMPOSERS                 = "_composers";
+@@ -405,6 +406,35 @@ public class MediaLibrary  {
+ 		}
+ 		sql += " WHERE "+selection;
+ 		getBackend(context).execSQL(sql);
++
++		if (played) {
++			getBackend(context).execSQL("INSERT INTO "+MediaLibrary.TABLE_PLAY_HISTORY+" ("
++				+MediaLibrary.PlayHistoryColumns.SONG_ID+", "+MediaLibrary.PlayHistoryColumns.TIMESTAMP+") VALUES ("
++				+id+", strftime('%s', CURRENT_TIMESTAMP))");
++
++			// Occasionally prune history older than a year: we only ever
++			// query 'this week' / 'this month' / all-time windows, so there
++			// is no reason to keep it around forever.
++			if (Math.random() > 0.95) {
++				long cutoff = (System.currentTimeMillis() / 1000) - (365L * 24 * 60 * 60);
++				getBackend(context).execSQL("DELETE FROM "+MediaLibrary.TABLE_PLAY_HISTORY
++					+" WHERE "+MediaLibrary.PlayHistoryColumns.TIMESTAMP+" < "+cutoff);
++			}
++		}
++	}
++
++	/**
++	 * Runs a raw SQL query against the media library database and returns
++	 * the resulting Cursor. Intended for queries that MediaLibrary's normal
++	 * table-based query() helper can't express, such as GROUP BY / COUNT.
++	 * Callers own the returned Cursor and must close it.
++	 *
++	 * @param context the context to use
++	 * @param sql the raw SQL query
++	 * @param args arguments to bind to the query, if any
++	 */
++	public static Cursor rawQuery(Context context, String sql, String[] args) {
++		return getBackend(context).rawQuery(sql, args);
+ 	}
+ 
+ 	/**
+@@ -684,6 +714,22 @@ public class MediaLibrary  {
+ 		String FLAGS = "_flags";
+ 	}
+ 
++	/**
++	 * Columns of the play_history table: one row per completed play of a
++	 * song, used to compute time-windowed play counts (e.g. "most played
++	 * this week") that a single running total can't answer.
++	 */
++	public interface PlayHistoryColumns {
++		/**
++		 * The id of the song that was played
++		 */
++		String SONG_ID = "song_id";
++		/**
++		 * Unix timestamp (seconds) of when this play happened
++		 */
++		String TIMESTAMP = "timestamp";
++	}
++
+ 	// Columns of Album entries
+ 	public interface AlbumColumns {
+ 		/**
+diff --git a/app/src/main/java/ch/blinkenlights/android/medialibrary/MediaLibraryBackend.java b/app/src/main/java/ch/blinkenlights/android/medialibrary/MediaLibraryBackend.java
+index 92445964..c12f5ec8 100644
+--- a/app/src/main/java/ch/blinkenlights/android/medialibrary/MediaLibraryBackend.java
++++ b/app/src/main/java/ch/blinkenlights/android/medialibrary/MediaLibraryBackend.java
+@@ -146,6 +146,16 @@ public class MediaLibraryBackend extends SQLiteOpenHelper {
+ 		getWritableDatabase().execSQL(sql);
+ 	}
+ 
++	/**
++	 * Wrapper for SQLiteDatabase.rawQuery() function
++	 *
++	 * @param sql the raw sql string
++	 * @param args the arguments to bind to the query, if any
++	 */
++	Cursor rawQuery(String sql, String[] args) {
++		return getReadableDatabase().rawQuery(sql, args);
++	}
++
+ 	/**
+ 	 * Wrapper for SQLiteDatabase.insert() function
+ 	 *
+diff --git a/app/src/main/java/ch/blinkenlights/android/medialibrary/MediaSchema.java b/app/src/main/java/ch/blinkenlights/android/medialibrary/MediaSchema.java
+index 71c4cb16..5d694ad0 100644
+--- a/app/src/main/java/ch/blinkenlights/android/medialibrary/MediaSchema.java
++++ b/app/src/main/java/ch/blinkenlights/android/medialibrary/MediaSchema.java
+@@ -40,6 +40,18 @@ public class MediaSchema {
+ 	  + MediaLibrary.SongColumns.FLAGS        +" INTEGER NOT NULL DEFAULT 0 "
+ 	  + ");";
+ 
++	/**
++	 * SQL Schema of `play_history' table: one row per completed play,
++	 * used to compute time-windowed play counts (e.g. "this week").
++	 */
++	private static final String DATABASE_CREATE_PLAY_HISTORY = "CREATE TABLE "+ MediaLibrary.TABLE_PLAY_HISTORY + " ("
++	  + MediaLibrary.PlayHistoryColumns.SONG_ID   +" INTEGER NOT NULL, "
++	  + MediaLibrary.PlayHistoryColumns.TIMESTAMP +" INTEGER NOT NULL "
++	  + ");";
++
++	private static final String DATABASE_CREATE_PLAY_HISTORY_INDEX = "CREATE INDEX IF NOT EXISTS play_history_timestamp_idx ON "
++	  + MediaLibrary.TABLE_PLAY_HISTORY + " (" + MediaLibrary.PlayHistoryColumns.TIMESTAMP + ");";
++
+ 	/**
+ 	 * SQL Schema of `albums' table
+ 	 */
+@@ -259,6 +271,8 @@ public class MediaSchema {
+ 	 */
+ 	public static void createDatabaseSchema(SQLiteDatabase dbh) {
+ 		dbh.execSQL(DATABASE_CREATE_SONGS);
++		dbh.execSQL(DATABASE_CREATE_PLAY_HISTORY);
++		dbh.execSQL(DATABASE_CREATE_PLAY_HISTORY_INDEX);
+ 		dbh.execSQL(DATABASE_CREATE_ALBUMS);
+ 		dbh.execSQL(DATABASE_CREATE_CONTRIBUTORS);
+ 		dbh.execSQL(DATABASE_CREATE_CONTRIBUTORS_SONGS);
+@@ -368,6 +382,8 @@ public class MediaSchema {
+ 
+ 		if (oldVersion < 20260725) {
+ 			dbh.execSQL("ALTER TABLE "+MediaLibrary.TABLE_SONGS+" ADD COLUMN "+MediaLibrary.SongColumns.LASTPLAYED+" INTEGER NOT NULL DEFAULT 0 ");
++			dbh.execSQL(DATABASE_CREATE_PLAY_HISTORY);
++			dbh.execSQL(DATABASE_CREATE_PLAY_HISTORY_INDEX);
+ 		}
+ 	}
+ 
+diff --git a/app/src/main/java/ch/blinkenlights/android/vanilla/AlbumArtWallpaper.java b/app/src/main/java/ch/blinkenlights/android/vanilla/AlbumArtWallpaper.java
+new file mode 100644
+index 00000000..c3205f3a
+--- /dev/null
++++ b/app/src/main/java/ch/blinkenlights/android/vanilla/AlbumArtWallpaper.java
+@@ -0,0 +1,109 @@
++/*
++ * Copyright (C) 2026 Kiko
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program. If not, see <http://www.gnu.org/licenses/>.
++ */
++
++package ch.blinkenlights.android.vanilla;
++
++import android.app.WallpaperManager;
++import android.content.Context;
++import android.graphics.Bitmap;
++import android.graphics.Canvas;
++import android.graphics.Paint;
++import android.os.Build;
++import android.util.Log;
++
++/**
++ * Sets the currently playing song's album art as the lock screen wallpaper.
++ * Only touches the lock screen wallpaper (WallpaperManager.FLAG_LOCK on
++ * Android N+), never the home screen wallpaper.
++ */
++public class AlbumArtWallpaper {
++
++	private static final String TAG = "VanillaMusic";
++
++	/**
++	 * Updates the lock screen wallpaper to the given song's album art, if
++	 * one is available. Silently does nothing if the song has no cover art,
++	 * or if setting the wallpaper fails for any reason (e.g. permission
++	 * revoked, or the device does not support a separate lock wallpaper).
++	 * Involves bitmap decoding and IPC, so this should be called from a
++	 * background thread.
++	 *
++	 * @param context the context to use
++	 * @param song the song whose cover art should become the wallpaper
++	 */
++	public static void update(Context context, Song song) {
++		if (song == null)
++			return;
++
++		Bitmap cover = song.getLargeCover(context);
++		if (cover == null)
++			return;
++
++		try {
++			WallpaperManager manager = WallpaperManager.getInstance(context);
++			int desiredWidth = manager.getDesiredMinimumWidth();
++			int desiredHeight = manager.getDesiredMinimumHeight();
++			if (desiredWidth <= 0 || desiredHeight <= 0) {
++				desiredWidth = cover.getWidth();
++				desiredHeight = cover.getHeight();
++			}
++
++			Bitmap wallpaper = cropToFill(cover, desiredWidth, desiredHeight);
++			if (wallpaper == null)
++				return;
++
++			if (Build.VERSION.SDK_INT >= 24) {
++				// Android 7+: sets only the lock screen wallpaper, leaving
++				// the home screen wallpaper untouched.
++				manager.setBitmap(wallpaper, null, true, WallpaperManager.FLAG_LOCK);
++			} else {
++				// No separate lock screen wallpaper API pre-N: falls back
++				// to setting the regular (single) system wallpaper.
++				manager.setBitmap(wallpaper);
++			}
++		} catch (Exception e) {
++			// Wallpaper permission may have been revoked, or the device may
++			// not support this - this is a cosmetic feature, so just log
++			// and move on rather than disrupting playback.
++			Log.w(TAG, "Failed to set album art wallpaper", e);
++		}
++	}
++
++	/**
++	 * Scales the source bitmap so it fully covers the given dimensions,
++	 * cropping any overflow, and centers the result.
++	 */
++	private static Bitmap cropToFill(Bitmap source, int width, int height) {
++		if (source == null || width < 1 || height < 1)
++			return null;
++
++		int sourceWidth = source.getWidth();
++		int sourceHeight = source.getHeight();
++		float scale = Math.max((float)width / sourceWidth, (float)height / sourceHeight);
++		int scaledWidth = Math.round(sourceWidth * scale);
++		int scaledHeight = Math.round(sourceHeight * scale);
++
++		Bitmap scaled = Bitmap.createScaledBitmap(source, scaledWidth, scaledHeight, true);
++		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
++		Canvas canvas = new Canvas(bitmap);
++		int left = (width - scaledWidth) / 2;
++		int top = (height - scaledHeight) / 2;
++		canvas.drawBitmap(scaled, left, top, new Paint());
++		return bitmap;
++	}
++
++}
+diff --git a/app/src/main/java/ch/blinkenlights/android/vanilla/CoverBitmap.java b/app/src/main/java/ch/blinkenlights/android/vanilla/CoverBitmap.java
+index cd289d95..0474784a 100644
+--- a/app/src/main/java/ch/blinkenlights/android/vanilla/CoverBitmap.java
++++ b/app/src/main/java/ch/blinkenlights/android/vanilla/CoverBitmap.java
+@@ -57,6 +57,12 @@ public final class CoverBitmap {
+ 	 * Draw no song info, only the cover.
+ 	 */
+ 	public static final int STYLE_NO_INFO = 2;
++	/**
++	 * Draw the cover cropped edge-to-edge to fill the entire view, with no
++	 * letterboxing and no song info drawn on top (info is instead drawn by
++	 * separate overlay views, e.g. in full_playback.xml).
++	 */
++	public static final int STYLE_FULLSCREEN = 3;
+ 	/**
+ 	 * Whether or not to debug painting operations.
+ 	 */
+@@ -132,11 +138,39 @@ public final class CoverBitmap {
+ 			return createSeparatedBitmap(context, coverArt, song, width, height);
+ 		case STYLE_NO_INFO:
+ 			return createScaledBitmap(coverArt, width, height);
++		case STYLE_FULLSCREEN:
++			return createCroppedBitmap(coverArt, width, height);
+ 		default:
+ 			throw new IllegalArgumentException("Invalid bitmap type given: " + style);
+ 		}
+ 	}
+ 
++	/**
++	 * Scales the source bitmap so it fully covers the given dimensions,
++	 * cropping any overflow, and centers the result. Unlike
++	 * {@link #createScaledBitmap}, which fits the whole image inside the
++	 * bounds (letterboxing), this fills the bounds completely.
++	 */
++	private static Bitmap createCroppedBitmap(Bitmap source, int width, int height)
++	{
++		if (source == null || width < 1 || height < 1)
++			return null;
++
++		int sourceWidth = source.getWidth();
++		int sourceHeight = source.getHeight();
++		float scale = Math.max((float)width / sourceWidth, (float)height / sourceHeight);
++		int scaledWidth = (int)(sourceWidth * scale);
++		int scaledHeight = (int)(sourceHeight * scale);
++
++		Bitmap scaled = Bitmap.createScaledBitmap(source, scaledWidth, scaledHeight, true);
++		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
++		Canvas canvas = new Canvas(bitmap);
++		int left = (width - scaledWidth) / 2;
++		int top = (height - scaledHeight) / 2;
++		canvas.drawBitmap(scaled, left, top, new Paint());
++		return bitmap;
++	}
++
+ 	private static Bitmap createOverlappingBitmap(Context context, Bitmap cover, Song song, int width, int height)
+ 	{
+ 		if (TEXT_SIZE == -1)
+diff --git a/app/src/main/java/ch/blinkenlights/android/vanilla/FullPlaybackActivity.java b/app/src/main/java/ch/blinkenlights/android/vanilla/FullPlaybackActivity.java
+index 2b8586a7..aa992e92 100644
+--- a/app/src/main/java/ch/blinkenlights/android/vanilla/FullPlaybackActivity.java
++++ b/app/src/main/java/ch/blinkenlights/android/vanilla/FullPlaybackActivity.java
+@@ -55,6 +55,7 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
+ 	public static final int DISPLAY_INFO_OVERLAP = 0;
+ 	public static final int DISPLAY_INFO_BELOW = 1;
+ 	public static final int DISPLAY_INFO_WIDGETS = 2;
++	public static final int DISPLAY_INFO_FULLSCREEN = 3;
+ 
+ 	private TextView mOverlayText;
+ 
+@@ -132,6 +133,10 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
+ 		case DISPLAY_INFO_BELOW:
+ 			coverStyle = CoverBitmap.STYLE_INFO_BELOW;
+ 			break;
++		case DISPLAY_INFO_FULLSCREEN:
++			coverStyle = CoverBitmap.STYLE_FULLSCREEN;
++			layout = R.layout.full_playback;
++			break;
+ 		}
+ 
+ 		setContentView(layout);
+diff --git a/app/src/main/java/ch/blinkenlights/android/vanilla/PlaybackService.java b/app/src/main/java/ch/blinkenlights/android/vanilla/PlaybackService.java
+index 1f6c88bc..d6eca0aa 100644
+--- a/app/src/main/java/ch/blinkenlights/android/vanilla/PlaybackService.java
++++ b/app/src/main/java/ch/blinkenlights/android/vanilla/PlaybackService.java
+@@ -403,6 +403,7 @@ public final class PlaybackService extends Service
+ 	 */
+ 	private int mAutoPlPlaycounts;
+ 	private boolean mSmartPlaylistsEnabled;
++	private boolean mWallpaperAlbumArt;
+ 	/**
+ 	 * Enables or disables Replay Gain
+ 	 */
+@@ -492,6 +493,7 @@ public final class PlaybackService extends Service
+ 
+ 		mAutoPlPlaycounts = settings.getInt(PrefKeys.AUTOPLAYLIST_PLAYCOUNTS, PrefDefaults.AUTOPLAYLIST_PLAYCOUNTS);
+ 		mSmartPlaylistsEnabled = settings.getBoolean(PrefKeys.SMART_PLAYLISTS_ENABLED, PrefDefaults.SMART_PLAYLISTS_ENABLED);
++		mWallpaperAlbumArt = settings.getBoolean(PrefKeys.WALLPAPER_ALBUM_ART, PrefDefaults.WALLPAPER_ALBUM_ART);
+ 		if (mSmartPlaylistsEnabled) {
+ 			// onCreate() runs on the main thread and mHandler isn't set up
+ 			// yet at this point, so do this one-time initial refresh on a
+@@ -953,6 +955,18 @@ public final class PlaybackService extends Service
+ 					}
+ 				}).start();
+ 			}
++		} else if (PrefKeys.WALLPAPER_ALBUM_ART.equals(key)) {
++			mWallpaperAlbumArt = settings.getBoolean(PrefKeys.WALLPAPER_ALBUM_ART, PrefDefaults.WALLPAPER_ALBUM_ART);
++			if (mWallpaperAlbumArt) {
++				final Context appContext = getApplicationContext();
++				final Song song = getSong(0);
++				new Thread(new Runnable() {
++					@Override
++					public void run() {
++						AlbumArtWallpaper.update(appContext, song);
++					}
++				}).start();
++			}
+ 		} else if (PrefKeys.PLAYLIST_SYNC_MODE.equals(key) || PrefKeys.PLAYLIST_SYNC_FOLDER.equals(key) || PrefKeys.PLAYLIST_EXPORT_RELATIVE_PATHS.equals(key)) {
+ 			int syncMode = Integer.parseInt(settings.getString(PrefKeys.PLAYLIST_SYNC_MODE, PrefDefaults.PLAYLIST_SYNC_MODE));
+ 			boolean exportRelativePaths = settings.getBoolean(PrefKeys.PLAYLIST_EXPORT_RELATIVE_PATHS, PrefDefaults.PLAYLIST_EXPORT_RELATIVE_PATHS);
+@@ -1123,6 +1137,10 @@ public final class PlaybackService extends Service
+ 			ArrayList<TimelineCallback> list = sCallbacks;
+ 			for (int i = list.size(); --i != -1; )
+ 				list.get(i).setSong(uptime, song);
++
++			if (mWallpaperAlbumArt) {
++				AlbumArtWallpaper.update(getApplicationContext(), song);
++			}
+ 		}
+ 
+ 		updateWidgets();
+diff --git a/app/src/main/java/ch/blinkenlights/android/vanilla/PrefDefaults.java b/app/src/main/java/ch/blinkenlights/android/vanilla/PrefDefaults.java
+index 5ae1b1af..ff709045 100644
+--- a/app/src/main/java/ch/blinkenlights/android/vanilla/PrefDefaults.java
++++ b/app/src/main/java/ch/blinkenlights/android/vanilla/PrefDefaults.java
+@@ -74,6 +74,7 @@ public class PrefDefaults {
+ 	public static final int     VOLUME_DURING_DUCKING = 50;
+ 	public static final int     AUTOPLAYLIST_PLAYCOUNTS = 0;
+ 	public static final boolean SMART_PLAYLISTS_ENABLED = false;
++	public static final boolean WALLPAPER_ALBUM_ART = false;
+ 	public static final boolean IGNORE_AUDIOFOCUS_LOSS = false;
+ 	public static final boolean ENABLE_SCROLL_TO_SONG = false;
+ 	public static final boolean QUEUE_ENABLE_SCROLL_TO_SONG = false;
+diff --git a/app/src/main/java/ch/blinkenlights/android/vanilla/PrefKeys.java b/app/src/main/java/ch/blinkenlights/android/vanilla/PrefKeys.java
+index c2b095dc..9ba3fc28 100644
+--- a/app/src/main/java/ch/blinkenlights/android/vanilla/PrefKeys.java
++++ b/app/src/main/java/ch/blinkenlights/android/vanilla/PrefKeys.java
+@@ -71,6 +71,7 @@ public class PrefKeys {
+ 	public static final String VOLUME_DURING_DUCKING = "volume_during_ducking";
+ 	public static final String AUTOPLAYLIST_PLAYCOUNTS = "playcounts_autoplaylist";
+ 	public static final String SMART_PLAYLISTS_ENABLED = "smart_playlists_enabled";
++	public static final String WALLPAPER_ALBUM_ART = "wallpaper_album_art";
+ 	public static final String IGNORE_AUDIOFOCUS_LOSS = "ignore_audiofocus_loss";
+ 	public static final String ENABLE_SCROLL_TO_SONG = "enable_scroll_to_song";
+ 	public static final String QUEUE_ENABLE_SCROLL_TO_SONG = "queue_enable_scroll_to_song";
+diff --git a/app/src/main/java/ch/blinkenlights/android/vanilla/SmartPlaylistHelper.java b/app/src/main/java/ch/blinkenlights/android/vanilla/SmartPlaylistHelper.java
+index 9a9c06fd..6afa53d8 100644
+--- a/app/src/main/java/ch/blinkenlights/android/vanilla/SmartPlaylistHelper.java
++++ b/app/src/main/java/ch/blinkenlights/android/vanilla/SmartPlaylistHelper.java
+@@ -36,8 +36,6 @@ public class SmartPlaylistHelper {
+ 
+ 	/** Songs added in the last 14 days count as "recently added". */
+ 	private static final long RECENTLY_ADDED_WINDOW_SECONDS = 14L * 24 * 60 * 60;
+-	/** Only consider plays in the last 30 days for "on repeat". */
+-	private static final long ON_REPEAT_WINDOW_SECONDS = 30L * 24 * 60 * 60;
+ 	/** Songs need to have existed at least this long to count as a "hidden gem" candidate. */
+ 	private static final long HIDDEN_GEM_MIN_AGE_SECONDS = 14L * 24 * 60 * 60;
+ 	/** Songs with at most this many plays are eligible as "hidden gems". */
+@@ -71,26 +69,40 @@ public class SmartPlaylistHelper {
+ 		return collectIds(cursor, limit);
+ 	}
+ 
++	/** "This week" window, in seconds. */
++	public static final long WINDOW_THIS_WEEK = 7L * 24 * 60 * 60;
++	/** "This month" window, in seconds. */
++	public static final long WINDOW_THIS_MONTH = 30L * 24 * 60 * 60;
++
+ 	/**
+-	 * Songs played most often within the last {@link #ON_REPEAT_WINDOW_SECONDS}.
+-	 * Falls back to all-time playcount if too few songs qualify, so the
+-	 * playlist isn't left near-empty for users without much recent listening.
++	 * Songs played most often within the given time window, based on actual
++	 * per-play history (not just the running lifetime total), most played
++	 * first.
+ 	 *
+ 	 * @param limit maximum number of songs to return, or 0 for no limit
++	 * @param windowSeconds how far back to look, e.g. {@link #WINDOW_THIS_WEEK}
+ 	 */
+-	public static ArrayList<Long> getOnRepeatSongs(Context context, int limit) {
+-		long cutoff = nowSeconds() - ON_REPEAT_WINDOW_SECONDS;
+-		String selection = MediaLibrary.SongColumns.PLAYCOUNT + " > 0 AND " + MediaLibrary.SongColumns.LASTPLAYED + " > " + cutoff;
+-		String order = MediaLibrary.SongColumns.PLAYCOUNT + " DESC";
+-		Cursor cursor = MediaLibrary.queryLibrary(context, MediaLibrary.TABLE_SONGS,
+-			new String[]{ MediaLibrary.SongColumns._ID }, selection, null, order);
+-		ArrayList<Long> result = collectIds(cursor, limit);
++	public static ArrayList<Long> getOnRepeatSongsForWindow(Context context, int limit, long windowSeconds) {
++		long cutoff = nowSeconds() - windowSeconds;
++		String sql = "SELECT " + MediaLibrary.PlayHistoryColumns.SONG_ID
++			+ " FROM " + MediaLibrary.TABLE_PLAY_HISTORY
++			+ " WHERE " + MediaLibrary.PlayHistoryColumns.TIMESTAMP + " > ?"
++			+ " AND " + MediaLibrary.PlayHistoryColumns.SONG_ID + " IN (SELECT " + MediaLibrary.SongColumns._ID + " FROM " + MediaLibrary.TABLE_SONGS + ")"
++			+ " GROUP BY " + MediaLibrary.PlayHistoryColumns.SONG_ID
++			+ " ORDER BY COUNT(*) DESC"
++			+ (limit > 0 ? " LIMIT " + limit : "");
++		Cursor cursor = MediaLibrary.rawQuery(context, sql, new String[]{ String.valueOf(cutoff) });
++		return collectIds(cursor, limit);
++	}
+ 
+-		if (result.size() < 5) {
+-			// Not enough recent listening data yet: fall back to all-time top songs.
+-			result = PlayCountsHelper.getTopSongs(context, limit <= 0 ? 100 : limit);
+-		}
+-		return result;
++	/**
++	 * All-time most played songs. Uses the exact lifetime playcount rather
++	 * than play_history, since that total is already tracked precisely.
++	 *
++	 * @param limit maximum number of songs to return, or 0 for no limit
++	 */
++	public static ArrayList<Long> getOnRepeatSongsAllTime(Context context, int limit) {
++		return PlayCountsHelper.getTopSongs(context, limit <= 0 ? 100 : limit);
+ 	}
+ 
+ 	/**
+@@ -139,8 +151,12 @@ public class SmartPlaylistHelper {
+ 	public static void refreshSmartPlaylists(Context context) {
+ 		refreshOne(context, context.getString(R.string.smart_playlist_recently_played),
+ 			getRecentlyPlayedSongs(context, SMART_PLAYLIST_LIMIT));
+-		refreshOne(context, context.getString(R.string.smart_playlist_on_repeat),
+-			getOnRepeatSongs(context, SMART_PLAYLIST_LIMIT));
++		refreshOne(context, context.getString(R.string.smart_playlist_on_repeat_week),
++			getOnRepeatSongsForWindow(context, SMART_PLAYLIST_LIMIT, WINDOW_THIS_WEEK));
++		refreshOne(context, context.getString(R.string.smart_playlist_on_repeat_month),
++			getOnRepeatSongsForWindow(context, SMART_PLAYLIST_LIMIT, WINDOW_THIS_MONTH));
++		refreshOne(context, context.getString(R.string.smart_playlist_on_repeat_alltime),
++			getOnRepeatSongsAllTime(context, SMART_PLAYLIST_LIMIT));
+ 		refreshOne(context, context.getString(R.string.smart_playlist_hidden_gems),
+ 			getHiddenGemSongs(context, SMART_PLAYLIST_LIMIT));
+ 		refreshOne(context, context.getString(R.string.smart_playlist_recently_added),
+diff --git a/app/src/main/res/values/translatable.xml b/app/src/main/res/values/translatable.xml
+index 92c8a5c9..7bf4137c 100644
+--- a/app/src/main/res/values/translatable.xml
++++ b/app/src/main/res/values/translatable.xml
+@@ -224,6 +224,8 @@ THE SOFTWARE.
+ 	<string name="playback_on_startup_title">Open on startup</string>
+ 	<string name="playback_on_startup_summary">Open playback view on startup</string>
+ 	<string name="display_mode_title">Display mode</string>
++	<string name="wallpaper_album_art_title">Album art as lock screen wallpaper</string>
++	<string name="wallpaper_album_art_summary">Sets your lock screen wallpaper to the current song\'s album art. Replaces your existing lock screen wallpaper.</string>
+ 	<string name="swipe_up_action_title">Swipe up action</string>
+ 	<string name="swipe_down_action_title">Swipe down action</string>
+ 	<string name="cover_press_action_title">Cover tap action</string>
+@@ -302,6 +304,7 @@ THE SOFTWARE.
+ 	<string name="info_on_cover">Info on cover art</string>
+ 	<string name="info_below_cover">Info below cover art</string>
+ 	<string name="fixed_info">Info fixed at top</string>
++	<string name="fullscreen_art">Fullscreen artwork</string>
+ 
+ 	<string name="do_nothing">Do nothing</string>
+ 	<string name="open_library">Open library</string>
+@@ -353,7 +356,9 @@ THE SOFTWARE.
+ 	<string name="smart_playlists_title">Smart playlists</string>
+ 	<string name="smart_playlists_summary">Automatically maintain Recently played, On repeat, Hidden gems and Recently added playlists</string>
+ 	<string name="smart_playlist_recently_played">Recently played</string>
+-	<string name="smart_playlist_on_repeat">On repeat</string>
++	<string name="smart_playlist_on_repeat_week">On repeat (This week)</string>
++	<string name="smart_playlist_on_repeat_month">On repeat (This month)</string>
++	<string name="smart_playlist_on_repeat_alltime">On repeat (All time)</string>
+ 	<string name="smart_playlist_hidden_gems">Hidden gems</string>
+ 	<string name="smart_playlist_recently_added">Recently added</string>
+ 
+diff --git a/app/src/main/res/values/untranslatable.xml b/app/src/main/res/values/untranslatable.xml
+index a5803776..d4fda2ce 100644
+--- a/app/src/main/res/values/untranslatable.xml
++++ b/app/src/main/res/values/untranslatable.xml
+@@ -156,6 +156,7 @@ THE SOFTWARE.
+ 		<item>@string/info_on_cover</item>
+ 		<item>@string/info_below_cover</item>
+ 		<item>@string/fixed_info</item>
++		<item>@string/fullscreen_art</item>
+ 	</string-array>
+ 
+ 
+diff --git a/app/src/main/res/xml/preference_playback.xml b/app/src/main/res/xml/preference_playback.xml
+index b5de7826..f73bd30c 100644
+--- a/app/src/main/res/xml/preference_playback.xml
++++ b/app/src/main/res/xml/preference_playback.xml
+@@ -34,6 +34,11 @@ THE SOFTWARE.
+ 		android:entries="@array/display_mode_entries"
+ 		android:entryValues="@array/entry_values"
+ 		android:defaultValue="2" />
++	<CheckBoxPreference
++		android:key="wallpaper_album_art"
++		android:title="@string/wallpaper_album_art_title"
++		android:summary="@string/wallpaper_album_art_summary"
++		android:defaultValue="false" />
+ 	<ch.blinkenlights.android.vanilla.ListPreferenceSummary
+ 		android:key="swipe_up_action"
+ 		android:title="@string/swipe_up_action_title"

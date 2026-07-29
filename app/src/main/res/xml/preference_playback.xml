@@ -34,6 +34,11 @@ THE SOFTWARE.
 		android:entries="@array/display_mode_entries"
 		android:entryValues="@array/entry_values"
 		android:defaultValue="2" />
+	<CheckBoxPreference
+		android:key="wallpaper_album_art"
+		android:title="@string/wallpaper_album_art_title"
+		android:summary="@string/wallpaper_album_art_summary"
+		android:defaultValue="false" />
 	<ch.blinkenlights.android.vanilla.ListPreferenceSummary
 		android:key="swipe_up_action"
 		android:title="@string/swipe_up_action_title"

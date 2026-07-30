@@ -158,35 +158,19 @@ public final class CoverBitmap {
 	 * @return a ready-to-use bitmap, or null if source/dimensions are invalid
 	 */
 	public static Bitmap createBlurredBackground(Bitmap source, int width, int height) {
-    if (source == null || width < 1 || height < 1)
-        return null;
+		if (source == null || width < 1 || height < 1)
+			return null;
 
-    // 1. Downscale the target dimensions first (factor of 60 for an intense blur)
-    int downscaleFactor = 60;
-    int lowResWidth = Math.max(1, width / downscaleFactor);
-    int lowResHeight = Math.max(1, height / downscaleFactor);
+		Bitmap cropped = cropToFill(source, width, height);
+		Bitmap blurred = cheapBlur(cropped, 24);
+		if (cropped != blurred) cropped.recycle();
 
-    // 2. Crop to the tiny size (super fast, minimal memory usage)
-    Bitmap cropped = cropToFill(source, lowResWidth, lowResHeight);
-    if (cropped == null) return null;
-
-    // 3. Pass 1 to cheapBlur since we already manually downscaled it
-    Bitmap blurredLowRes = cheapBlur(cropped, 1);
-    if (cropped != blurredLowRes) cropped.recycle();
-
-    // 4. Blow the tiny blurred image back up to full screen size
-    Bitmap blurred = Bitmap.createScaledBitmap(blurredLowRes, width, height, true);
-    if (blurred != blurredLowRes) blurredLowRes.recycle();
-
-    // 5. Ensure mutability safely
-    Bitmap result = blurred.isMutable() ? blurred : blurred.copy(blurred.getConfig(), true);
-    if (result != blurred) blurred.recycle();
-
-    // 6. Draw translucent wash
-    Canvas canvas = new Canvas(result);
-    canvas.drawColor(0x66000000);
-    return result;
-}
+		Canvas canvas = new Canvas(blurred);
+		// Translucent black wash so white text/controls stay legible
+		// regardless of how bright the source artwork is.
+		canvas.drawColor(0x66000000);
+		return blurred;
+	}
 
 	/**
 	 * Scales the source bitmap so it fully covers the given dimensions,

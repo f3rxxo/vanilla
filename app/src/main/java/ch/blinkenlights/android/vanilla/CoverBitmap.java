@@ -30,17 +30,14 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.BitmapShader;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
-import android.graphics.drawable.GradientDrawable;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
-import androidx.palette.graphics.Palette;
 
 /**
  * Class containing utility functions to create Bitmaps display song info and
@@ -62,9 +59,9 @@ public final class CoverBitmap {
 	public static final int STYLE_NO_INFO = 2;
 	/**
 	 * Like STYLE_NO_INFO (cover kept at its natural, fit-inside size - never
-	 * upscaled or cropped), but intended to be shown over an accent gradient
-	 * background (see {@link #createAccentGradient}) drawn separately by the
-	 * caller so it can extend edge-to-edge behind system bars.
+	 * upscaled or cropped), but intended to be shown over a blurred-cover
+	 * background (see {@link #createBlurredBackground}) drawn separately by
+	 * the caller so it can extend edge-to-edge behind system bars.
 	 */
 	public static final int STYLE_FULLSCREEN = 3;
 	/**
@@ -149,54 +146,71 @@ public final class CoverBitmap {
 	}
 
 	/**
-	 * Builds a top-to-bottom gradient drawable for use as a background behind
-	 * fullscreen artwork: a dominant accent color (sampled from the cover's
-	 * dark-vibrant or muted tones via the Palette API) at the top, softly
-	 * fading to near-black at the bottom for a sense of depth.
+	 * Builds a full-bleed blurred version of the cover art for use as a
+	 * background behind the (separately drawn, sharp, fit-inside) fullscreen
+	 * artwork: cropped to fill the given dimensions edge-to-edge (cropping
+	 * doesn't matter once blurred), blurred, and darkened slightly for
+	 * legibility of any text/controls drawn on top.
 	 *
-	 * @param source the cover art to sample, may be null
-	 * @return a ready-to-use gradient drawable
+	 * @param source the cover art to blur, may be null
+	 * @param width target width in pixels
+	 * @param height target height in pixels
+	 * @return a ready-to-use bitmap, or null if source/dimensions are invalid
 	 */
-	public static GradientDrawable createAccentGradient(Bitmap source) {
-		int accent = extractAccentColor(source);
-		int mid = blend(accent, Color.BLACK, 0.55f);
-		int bottom = Color.rgb(16, 16, 16);
-		GradientDrawable gradient = new GradientDrawable(
-			GradientDrawable.Orientation.TOP_BOTTOM,
-			new int[]{ accent, mid, bottom });
-		return gradient;
+	public static Bitmap createBlurredBackground(Bitmap source, int width, int height) {
+		if (source == null || width < 1 || height < 1)
+			return null;
+
+		Bitmap cropped = cropToFill(source, width, height);
+		Bitmap blurred = cheapBlur(cropped, 24);
+		if (cropped != blurred) cropped.recycle();
+
+		Canvas canvas = new Canvas(blurred);
+		// Translucent black wash so white text/controls stay legible
+		// regardless of how bright the source artwork is.
+		canvas.drawColor(0x66000000);
+		return blurred;
 	}
 
 	/**
-	 * Picks a representative accent color from a bitmap's Palette, preferring
-	 * dark-vibrant and muted swatches (which tend to work well as a
-	 * background behind light text) and falling back progressively if those
-	 * aren't present in a given image.
+	 * Scales the source bitmap so it fully covers the given dimensions,
+	 * cropping any overflow, and centers the result.
 	 */
-	private static int extractAccentColor(Bitmap source) {
-		if (source == null)
-			return 0xFF202020;
+	private static Bitmap cropToFill(Bitmap source, int width, int height) {
+		int sourceWidth = source.getWidth();
+		int sourceHeight = source.getHeight();
+		float scale = Math.max((float)width / sourceWidth, (float)height / sourceHeight);
+		int scaledWidth = Math.round(sourceWidth * scale);
+		int scaledHeight = Math.round(sourceHeight * scale);
 
-		Palette palette = Palette.from(source).generate();
-		Palette.Swatch swatch = palette.getDarkVibrantSwatch();
-		if (swatch == null) swatch = palette.getMutedSwatch();
-		if (swatch == null) swatch = palette.getDarkMutedSwatch();
-		if (swatch == null) swatch = palette.getVibrantSwatch();
-		if (swatch == null) swatch = palette.getDominantSwatch();
-		return swatch != null ? swatch.getRgb() : 0xFF202020;
+		Bitmap scaled = Bitmap.createScaledBitmap(source, scaledWidth, scaledHeight, true);
+		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+		Canvas canvas = new Canvas(bitmap);
+		int left = (width - scaledWidth) / 2;
+		int top = (height - scaledHeight) / 2;
+		canvas.drawBitmap(scaled, left, top, new Paint());
+		if (scaled != bitmap) scaled.recycle();
+		return bitmap;
 	}
 
 	/**
-	 * Linearly interpolates between two colors.
+	 * A cheap, dependency-free approximation of a Gaussian blur: downscales
+	 * the bitmap heavily, then scales it back up. The bilinear upscale
+	 * softens hard edges into a convincing blur at a fraction of the cost of
+	 * a real box/Gaussian blur pass, and needs no RenderScript (deprecated)
+	 * or extra libraries.
 	 *
-	 * @param ratio 0 returns color a, 1 returns color b
+	 * @param source bitmap to blur
+	 * @param downscaleFactor how aggressively to downscale before scaling
+	 * back up; higher values blur more. 20-30 gives a strong, smooth blur.
 	 */
-	private static int blend(int a, int b, float ratio) {
-		float inverse = 1 - ratio;
-		int r = (int)(Color.red(a) * inverse + Color.red(b) * ratio);
-		int g = (int)(Color.green(a) * inverse + Color.green(b) * ratio);
-		int bl = (int)(Color.blue(a) * inverse + Color.blue(b) * ratio);
-		return Color.rgb(r, g, bl);
+	private static Bitmap cheapBlur(Bitmap source, int downscaleFactor) {
+		int smallWidth = Math.max(1, source.getWidth() / downscaleFactor);
+		int smallHeight = Math.max(1, source.getHeight() / downscaleFactor);
+		Bitmap small = Bitmap.createScaledBitmap(source, smallWidth, smallHeight, true);
+		Bitmap blurred = Bitmap.createScaledBitmap(small, source.getWidth(), source.getHeight(), true);
+		if (small != blurred) small.recycle();
+		return blurred;
 	}
 
 	private static Bitmap createOverlappingBitmap(Context context, Bitmap cover, Song song, int width, int height)

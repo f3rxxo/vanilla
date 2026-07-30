@@ -31,10 +31,11 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Message;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.BitmapDrawable;
 import android.os.Build;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -199,9 +200,10 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 	}
 
 	/**
-	 * Makes the system status/navigation bars transparent so the gradient
-	 * background shows through them, without altering the window's layout
-	 * bounds (an earlier version of this used FLAG_LAYOUT_NO_LIMITS plus the
+	 * Makes the system status/navigation bars transparent and hides the
+	 * action bar, so the blurred background reaches the true screen edges
+	 * with no blue action bar or default theme color showing through
+	 * (an earlier version of this used FLAG_LAYOUT_NO_LIMITS plus the
 	 * deprecated fullscreen system-UI flags, which changed how the cover art
 	 * was measured and made it render incorrectly - this version does not).
 	 */
@@ -212,27 +214,35 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 		if (Build.VERSION.SDK_INT >= 21) {
 			window.setNavigationBarColor(Color.TRANSPARENT);
 		}
+		if (getActionBar() != null) {
+			getActionBar().hide();
+		}
 	}
 
 	/**
-	 * Extracts an accent gradient from the given song's cover art and applies
-	 * it as the window background, so the fullscreen artwork mode shows a
-	 * color-matched backdrop instead of the theme's default background.
-	 * Bitmap decoding and Palette extraction happen on a background thread.
+	 * Builds a full-bleed blurred version of the given song's cover art and
+	 * applies it as the window background, so the fullscreen artwork mode
+	 * shows a soft, color-matched backdrop instead of the theme's default
+	 * background. Bitmap decoding and blurring happen on a background
+	 * thread.
 	 *
-	 * @param song the song whose cover art should be sampled, may be null
+	 * @param song the song whose cover art should be blurred, may be null
 	 */
 	private void updateFullscreenBackground(final Song song)
 	{
+		final DisplayMetrics metrics = getResources().getDisplayMetrics();
 		new Thread(new Runnable() {
 			@Override
 			public void run() {
 				final Bitmap cover = song == null ? null : song.getLargeCover(FullPlaybackActivity.this);
-				final GradientDrawable gradient = CoverBitmap.createAccentGradient(cover);
+				final Bitmap blurred = CoverBitmap.createBlurredBackground(cover, metrics.widthPixels, metrics.heightPixels);
+				if (blurred == null)
+					return;
+				final BitmapDrawable background = new BitmapDrawable(getResources(), blurred);
 				runOnUiThread(new Runnable() {
 					@Override
 					public void run() {
-						getWindow().getDecorView().setBackground(gradient);
+						getWindow().getDecorView().setBackground(background);
 					}
 				});
 			}

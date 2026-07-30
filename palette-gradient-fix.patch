@@ -1,0 +1,214 @@
+diff --git a/app/build.gradle b/app/build.gradle
+index 145f599e..1e822d5e 100644
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -30,6 +30,7 @@ android {
+ dependencies {
+     implementation 'androidx.legacy:legacy-support-core-ui:1.0.0'
+     implementation 'androidx.media:media:1.6.0'
++    implementation 'androidx.palette:palette:1.0.0'
+     implementation 'com.google.android.material:material:1.7.0'
+     implementation 'junit:junit:4.12'
+     compileOnly 'androidx.annotation:annotation:1.0.0'
+diff --git a/app/src/main/java/ch/blinkenlights/android/vanilla/AlbumArtWallpaper.java b/app/src/main/java/ch/blinkenlights/android/vanilla/AlbumArtWallpaper.java
+index 27b86570..ed781a55 100644
+--- a/app/src/main/java/ch/blinkenlights/android/vanilla/AlbumArtWallpaper.java
++++ b/app/src/main/java/ch/blinkenlights/android/vanilla/AlbumArtWallpaper.java
+@@ -84,11 +84,9 @@ public class AlbumArtWallpaper {
+ 	}
+ 
+ 	/**
+-	 * Composes a wallpaper-sized bitmap: the cover art kept at its natural,
+-	 * fit-inside size (never upscaled or cropped) and centered over a
+-	 * background filled with the cover's dominant color, extending to the
+-	 * full given dimensions edge-to-edge. Matches the same treatment used
+-	 * by the in-app fullscreen artwork display mode.
++	 * Composes a wallpaper-sized bitmap: the cover art scaled to fit fully
++	 * inside the given dimensions (never upscaled, never cropped) and
++	 * centered on a plain black background.
+ 	 */
+ 	private static Bitmap composeFullscreenBitmap(Bitmap source, int width, int height) {
+ 		if (source == null || width < 1 || height < 1)
+@@ -96,7 +94,7 @@ public class AlbumArtWallpaper {
+ 
+ 		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+ 		Canvas canvas = new Canvas(bitmap);
+-		canvas.drawColor(CoverBitmap.getDominantColor(source));
++		canvas.drawColor(0xFF000000);
+ 
+ 		int sourceWidth = source.getWidth();
+ 		int sourceHeight = source.getHeight();
+diff --git a/app/src/main/java/ch/blinkenlights/android/vanilla/CoverBitmap.java b/app/src/main/java/ch/blinkenlights/android/vanilla/CoverBitmap.java
+index e003c0b4..a0edb4f5 100644
+--- a/app/src/main/java/ch/blinkenlights/android/vanilla/CoverBitmap.java
++++ b/app/src/main/java/ch/blinkenlights/android/vanilla/CoverBitmap.java
+@@ -37,8 +37,10 @@ import android.graphics.PorterDuffColorFilter;
+ import android.graphics.Rect;
+ import android.graphics.RectF;
+ import android.graphics.Shader;
++import android.graphics.drawable.GradientDrawable;
+ import android.util.DisplayMetrics;
+ import android.util.TypedValue;
++import androidx.palette.graphics.Palette;
+ 
+ /**
+  * Class containing utility functions to create Bitmaps display song info and
+@@ -60,8 +62,8 @@ public final class CoverBitmap {
+ 	public static final int STYLE_NO_INFO = 2;
+ 	/**
+ 	 * Like STYLE_NO_INFO (cover kept at its natural, fit-inside size - never
+-	 * upscaled or cropped), but intended to be shown over a dominant-color
+-	 * background (see {@link #getDominantColor}) drawn separately by the
++	 * upscaled or cropped), but intended to be shown over an accent gradient
++	 * background (see {@link #createAccentGradient}) drawn separately by the
+ 	 * caller so it can extend edge-to-edge behind system bars.
+ 	 */
+ 	public static final int STYLE_FULLSCREEN = 3;
+@@ -147,29 +149,54 @@ public final class CoverBitmap {
+ 	}
+ 
+ 	/**
+-	 * Extracts an approximate dominant color from a bitmap by downscaling it
+-	 * to a single pixel (a cheap stand-in for a full palette extraction) and
+-	 * darkening the result slightly so it stays a usable background behind
+-	 * light text.
++	 * Builds a top-to-bottom gradient drawable for use as a background behind
++	 * fullscreen artwork: a dominant accent color (sampled from the cover's
++	 * dark-vibrant or muted tones via the Palette API) at the top, softly
++	 * fading to near-black at the bottom for a sense of depth.
+ 	 *
+-	 * @param source the bitmap to sample, may be null
+-	 * @return an opaque ARGB color; a dark gray fallback if source is null
++	 * @param source the cover art to sample, may be null
++	 * @return a ready-to-use gradient drawable
+ 	 */
+-	public static int getDominantColor(Bitmap source) {
+-		if (source == null || source.getWidth() < 1 || source.getHeight() < 1)
++	public static GradientDrawable createAccentGradient(Bitmap source) {
++		int accent = extractAccentColor(source);
++		int mid = blend(accent, Color.BLACK, 0.55f);
++		int bottom = Color.rgb(16, 16, 16);
++		GradientDrawable gradient = new GradientDrawable(
++			GradientDrawable.Orientation.TOP_BOTTOM,
++			new int[]{ accent, mid, bottom });
++		return gradient;
++	}
++
++	/**
++	 * Picks a representative accent color from a bitmap's Palette, preferring
++	 * dark-vibrant and muted swatches (which tend to work well as a
++	 * background behind light text) and falling back progressively if those
++	 * aren't present in a given image.
++	 */
++	private static int extractAccentColor(Bitmap source) {
++		if (source == null)
+ 			return 0xFF202020;
+ 
+-		Bitmap tiny = Bitmap.createScaledBitmap(source, 1, 1, true);
+-		int color = tiny.getPixel(0, 0);
+-		tiny.recycle();
+-
+-		// Darken so light/white text and controls stay legible on top,
+-		// regardless of how bright the source artwork is.
+-		float darken = 0.55f;
+-		int r = (int)(Color.red(color) * darken);
+-		int g = (int)(Color.green(color) * darken);
+-		int b = (int)(Color.blue(color) * darken);
+-		return Color.rgb(r, g, b);
++		Palette palette = Palette.from(source).generate();
++		Palette.Swatch swatch = palette.getDarkVibrantSwatch();
++		if (swatch == null) swatch = palette.getMutedSwatch();
++		if (swatch == null) swatch = palette.getDarkMutedSwatch();
++		if (swatch == null) swatch = palette.getVibrantSwatch();
++		if (swatch == null) swatch = palette.getDominantSwatch();
++		return swatch != null ? swatch.getRgb() : 0xFF202020;
++	}
++
++	/**
++	 * Linearly interpolates between two colors.
++	 *
++	 * @param ratio 0 returns color a, 1 returns color b
++	 */
++	private static int blend(int a, int b, float ratio) {
++		float inverse = 1 - ratio;
++		int r = (int)(Color.red(a) * inverse + Color.red(b) * ratio);
++		int g = (int)(Color.green(a) * inverse + Color.green(b) * ratio);
++		int bl = (int)(Color.blue(a) * inverse + Color.blue(b) * ratio);
++		return Color.rgb(r, g, bl);
+ 	}
+ 
+ 	private static Bitmap createOverlappingBitmap(Context context, Bitmap cover, Song song, int width, int height)
+diff --git a/app/src/main/java/ch/blinkenlights/android/vanilla/FullPlaybackActivity.java b/app/src/main/java/ch/blinkenlights/android/vanilla/FullPlaybackActivity.java
+index 0f8a69c2..6980902d 100644
+--- a/app/src/main/java/ch/blinkenlights/android/vanilla/FullPlaybackActivity.java
++++ b/app/src/main/java/ch/blinkenlights/android/vanilla/FullPlaybackActivity.java
+@@ -32,7 +32,9 @@ import android.content.SharedPreferences;
+ import android.os.Bundle;
+ import android.os.Message;
+ import android.util.Log;
++import android.graphics.Bitmap;
+ import android.graphics.Color;
++import android.graphics.drawable.GradientDrawable;
+ import android.os.Build;
+ import android.view.Gravity;
+ import android.view.KeyEvent;
+@@ -42,7 +44,6 @@ import android.view.SubMenu;
+ import android.view.View;
+ import android.view.ViewGroup;
+ import android.view.Window;
+-import android.view.WindowManager;
+ import android.widget.LinearLayout;
+ import android.widget.TableLayout;
+ import android.widget.TableRow;
+@@ -198,18 +199,15 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
+ 	}
+ 
+ 	/**
+-	 * Extends the window behind the system status/navigation bars and makes
+-	 * them transparent, so the fullscreen artwork background reaches the
+-	 * true screen edges instead of stopping at the system bar insets.
++	 * Makes the system status/navigation bars transparent so the gradient
++	 * background shows through them, without altering the window's layout
++	 * bounds (an earlier version of this used FLAG_LAYOUT_NO_LIMITS plus the
++	 * deprecated fullscreen system-UI flags, which changed how the cover art
++	 * was measured and made it render incorrectly - this version does not).
+ 	 */
+ 	private void setupEdgeToEdge()
+ 	{
+ 		Window window = getWindow();
+-		window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+-		window.getDecorView().setSystemUiVisibility(
+-			View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+-			| View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+-			| View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+ 		window.setStatusBarColor(Color.TRANSPARENT);
+ 		if (Build.VERSION.SDK_INT >= 21) {
+ 			window.setNavigationBarColor(Color.TRANSPARENT);
+@@ -217,10 +215,10 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
+ 	}
+ 
+ 	/**
+-	 * Extracts the dominant color of the given song's cover art and applies
++	 * Extracts an accent gradient from the given song's cover art and applies
+ 	 * it as the window background, so the fullscreen artwork mode shows a
+ 	 * color-matched backdrop instead of the theme's default background.
+-	 * Bitmap decoding happens on a background thread.
++	 * Bitmap decoding and Palette extraction happen on a background thread.
+ 	 *
+ 	 * @param song the song whose cover art should be sampled, may be null
+ 	 */
+@@ -229,11 +227,12 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
+ 		new Thread(new Runnable() {
+ 			@Override
+ 			public void run() {
+-				final int color = CoverBitmap.getDominantColor(song == null ? null : song.getLargeCover(FullPlaybackActivity.this));
++				final Bitmap cover = song == null ? null : song.getLargeCover(FullPlaybackActivity.this);
++				final GradientDrawable gradient = CoverBitmap.createAccentGradient(cover);
+ 				runOnUiThread(new Runnable() {
+ 					@Override
+ 					public void run() {
+-						getWindow().getDecorView().setBackgroundColor(color);
++						getWindow().getDecorView().setBackground(gradient);
+ 					}
+ 				});
+ 			}

@@ -32,7 +32,9 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Message;
 import android.util.Log;
+import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -42,7 +44,6 @@ import android.view.SubMenu;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TableLayout;
 import android.widget.TableRow;
@@ -198,18 +199,15 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 	}
 
 	/**
-	 * Extends the window behind the system status/navigation bars and makes
-	 * them transparent, so the fullscreen artwork background reaches the
-	 * true screen edges instead of stopping at the system bar insets.
+	 * Makes the system status/navigation bars transparent so the gradient
+	 * background shows through them, without altering the window's layout
+	 * bounds (an earlier version of this used FLAG_LAYOUT_NO_LIMITS plus the
+	 * deprecated fullscreen system-UI flags, which changed how the cover art
+	 * was measured and made it render incorrectly - this version does not).
 	 */
 	private void setupEdgeToEdge()
 	{
 		Window window = getWindow();
-		window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
-		window.getDecorView().setSystemUiVisibility(
-			View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-			| View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-			| View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
 		window.setStatusBarColor(Color.TRANSPARENT);
 		if (Build.VERSION.SDK_INT >= 21) {
 			window.setNavigationBarColor(Color.TRANSPARENT);
@@ -217,10 +215,10 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 	}
 
 	/**
-	 * Extracts the dominant color of the given song's cover art and applies
+	 * Extracts an accent gradient from the given song's cover art and applies
 	 * it as the window background, so the fullscreen artwork mode shows a
 	 * color-matched backdrop instead of the theme's default background.
-	 * Bitmap decoding happens on a background thread.
+	 * Bitmap decoding and Palette extraction happen on a background thread.
 	 *
 	 * @param song the song whose cover art should be sampled, may be null
 	 */
@@ -229,11 +227,12 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 		new Thread(new Runnable() {
 			@Override
 			public void run() {
-				final int color = CoverBitmap.getDominantColor(song == null ? null : song.getLargeCover(FullPlaybackActivity.this));
+				final Bitmap cover = song == null ? null : song.getLargeCover(FullPlaybackActivity.this);
+				final GradientDrawable gradient = CoverBitmap.createAccentGradient(cover);
 				runOnUiThread(new Runnable() {
 					@Override
 					public void run() {
-						getWindow().getDecorView().setBackgroundColor(color);
+						getWindow().getDecorView().setBackground(gradient);
 					}
 				});
 			}

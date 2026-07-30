@@ -84,11 +84,9 @@ public class AlbumArtWallpaper {
 	}
 
 	/**
-	 * Composes a wallpaper-sized bitmap: the cover art kept at its natural,
-	 * fit-inside size (never upscaled or cropped) and centered over a
-	 * background filled with the cover's dominant color, extending to the
-	 * full given dimensions edge-to-edge. Matches the same treatment used
-	 * by the in-app fullscreen artwork display mode.
+	 * Composes a wallpaper-sized bitmap: the cover art scaled to fit fully
+	 * inside the given dimensions (never upscaled, never cropped) and
+	 * centered on a plain black background.
 	 */
 	private static Bitmap composeFullscreenBitmap(Bitmap source, int width, int height) {
 		if (source == null || width < 1 || height < 1)
@@ -96,7 +94,7 @@ public class AlbumArtWallpaper {
 
 		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
 		Canvas canvas = new Canvas(bitmap);
-		canvas.drawColor(CoverBitmap.getDominantColor(source));
+		canvas.drawColor(0xFF000000);
 
 		int sourceWidth = source.getWidth();
 		int sourceHeight = source.getHeight();

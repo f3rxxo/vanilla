@@ -37,8 +37,10 @@ import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.graphics.drawable.GradientDrawable;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
+import androidx.palette.graphics.Palette;
 
 /**
  * Class containing utility functions to create Bitmaps display song info and
@@ -60,8 +62,8 @@ public final class CoverBitmap {
 	public static final int STYLE_NO_INFO = 2;
 	/**
 	 * Like STYLE_NO_INFO (cover kept at its natural, fit-inside size - never
-	 * upscaled or cropped), but intended to be shown over a dominant-color
-	 * background (see {@link #getDominantColor}) drawn separately by the
+	 * upscaled or cropped), but intended to be shown over an accent gradient
+	 * background (see {@link #createAccentGradient}) drawn separately by the
 	 * caller so it can extend edge-to-edge behind system bars.
 	 */
 	public static final int STYLE_FULLSCREEN = 3;
@@ -147,29 +149,54 @@ public final class CoverBitmap {
 	}
 
 	/**
-	 * Extracts an approximate dominant color from a bitmap by downscaling it
-	 * to a single pixel (a cheap stand-in for a full palette extraction) and
-	 * darkening the result slightly so it stays a usable background behind
-	 * light text.
+	 * Builds a top-to-bottom gradient drawable for use as a background behind
+	 * fullscreen artwork: a dominant accent color (sampled from the cover's
+	 * dark-vibrant or muted tones via the Palette API) at the top, softly
+	 * fading to near-black at the bottom for a sense of depth.
 	 *
-	 * @param source the bitmap to sample, may be null
-	 * @return an opaque ARGB color; a dark gray fallback if source is null
+	 * @param source the cover art to sample, may be null
+	 * @return a ready-to-use gradient drawable
 	 */
-	public static int getDominantColor(Bitmap source) {
-		if (source == null || source.getWidth() < 1 || source.getHeight() < 1)
+	public static GradientDrawable createAccentGradient(Bitmap source) {
+		int accent = extractAccentColor(source);
+		int mid = blend(accent, Color.BLACK, 0.55f);
+		int bottom = Color.rgb(16, 16, 16);
+		GradientDrawable gradient = new GradientDrawable(
+			GradientDrawable.Orientation.TOP_BOTTOM,
+			new int[]{ accent, mid, bottom });
+		return gradient;
+	}
+
+	/**
+	 * Picks a representative accent color from a bitmap's Palette, preferring
+	 * dark-vibrant and muted swatches (which tend to work well as a
+	 * background behind light text) and falling back progressively if those
+	 * aren't present in a given image.
+	 */
+	private static int extractAccentColor(Bitmap source) {
+		if (source == null)
 			return 0xFF202020;
 
-		Bitmap tiny = Bitmap.createScaledBitmap(source, 1, 1, true);
-		int color = tiny.getPixel(0, 0);
-		tiny.recycle();
+		Palette palette = Palette.from(source).generate();
+		Palette.Swatch swatch = palette.getDarkVibrantSwatch();
+		if (swatch == null) swatch = palette.getMutedSwatch();
+		if (swatch == null) swatch = palette.getDarkMutedSwatch();
+		if (swatch == null) swatch = palette.getVibrantSwatch();
+		if (swatch == null) swatch = palette.getDominantSwatch();
+		return swatch != null ? swatch.getRgb() : 0xFF202020;
+	}
 
-		// Darken so light/white text and controls stay legible on top,
-		// regardless of how bright the source artwork is.
-		float darken = 0.55f;
-		int r = (int)(Color.red(color) * darken);
-		int g = (int)(Color.green(color) * darken);
-		int b = (int)(Color.blue(color) * darken);
-		return Color.rgb(r, g, b);
+	/**
+	 * Linearly interpolates between two colors.
+	 *
+	 * @param ratio 0 returns color a, 1 returns color b
+	 */
+	private static int blend(int a, int b, float ratio) {
+		float inverse = 1 - ratio;
+		int r = (int)(Color.red(a) * inverse + Color.red(b) * ratio);
+		int g = (int)(Color.green(a) * inverse + Color.green(b) * ratio);
+		int bl = (int)(Color.blue(a) * inverse + Color.blue(b) * ratio);
+		return Color.rgb(r, g, bl);
 	}
 
 	private static Bitmap createOverlappingBitmap(Context context, Bitmap cover, Song song, int width, int height)

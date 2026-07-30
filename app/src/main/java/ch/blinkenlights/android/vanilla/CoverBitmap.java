@@ -161,30 +161,30 @@ public final class CoverBitmap {
     if (source == null || width < 1 || height < 1)
         return null;
 
-    // 1. Extreme downscale factor (120) forces pixels to fully melt together
-    int downscaleFactor = 120;
+    // 1. Downscale the target dimensions first (factor of 60 for an intense blur)
+    int downscaleFactor = 60;
     int lowResWidth = Math.max(1, width / downscaleFactor);
     int lowResHeight = Math.max(1, height / downscaleFactor);
 
-    // 2. Crop to the tiny size
+    // 2. Crop to the tiny size (super fast, minimal memory usage)
     Bitmap cropped = cropToFill(source, lowResWidth, lowResHeight);
     if (cropped == null) return null;
 
-    // 3. Pass 1 to cheapBlur since we handled the downscaling
+    // 3. Pass 1 to cheapBlur since we already manually downscaled it
     Bitmap blurredLowRes = cheapBlur(cropped, 1);
     if (cropped != blurredLowRes) cropped.recycle();
 
-    // 4. Upscale back to full size (bilinear filtering blends it perfectly)
+    // 4. Blow the tiny blurred image back up to full screen size
     Bitmap blurred = Bitmap.createScaledBitmap(blurredLowRes, width, height, true);
     if (blurred != blurredLowRes) blurredLowRes.recycle();
 
-    // 5. Ensure mutability safety
+    // 5. Ensure mutability safely
     Bitmap result = blurred.isMutable() ? blurred : blurred.copy(blurred.getConfig(), true);
     if (result != blurred) blurred.recycle();
 
-    // 6. Softened dark wash (~30% opacity) so the intense blur stays vibrant
+    // 6. Draw translucent wash
     Canvas canvas = new Canvas(result);
-    canvas.drawColor(0x4D000000); 
+    canvas.drawColor(0x66000000);
     return result;
 }
 

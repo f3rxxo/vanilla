@@ -31,7 +31,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Message;
-import android.util.DisplayMetrics;
 import android.util.Log;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -42,10 +41,7 @@ import android.graphics.Shader;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
-import android.renderscript.Allocation;
-import android.renderscript.Element;
-import android.renderscript.RenderScript;
-import android.renderscript.ScriptIntrinsicBlur;
+import androidx.palette.graphics.Palette;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -60,8 +56,6 @@ import android.widget.TableRow;
 import android.widget.TextView;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
-
-import androidx.palette.graphics.Palette;
 
 /**
  * The primary playback screen with playback controls and large cover display.
@@ -251,14 +245,23 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 	}
 
 	/**
-	 * Fetches the album art for the given song and triggers the dynamic background generation.
+	 * Fetches the given song's cover art on a background thread, then hands
+	 * it off to {@link #updateDynamicBackground} to build the fullscreen
+	 * mode's background.
 	 *
-	 * @param song The currently playing song, may be null.
+	 * @param song the song whose cover art should be used, may be null
 	 */
-	private void updateFullscreenBackground(final Song song) {
-		new Thread(() -> {
-			Bitmap cover = (song == null) ? null : song.getLargeCover(FullPlaybackActivity.this);
-			updateDynamicBackground(cover);
+	private void updateFullscreenBackground(final Song song)
+	{
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				// NOTE: getLargeCover() returns a bitmap owned by Song's
+				// shared static cache, not a fresh copy - it must never be
+				// recycled here, only read from.
+				Bitmap coverArt = song == null ? null : song.getLargeCover(FullPlaybackActivity.this);
+				updateDynamicBackground(coverArt);
+			}
 		}).start();
 	}
 
@@ -266,85 +269,108 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 	 * Generates a Spotify/Apple Music-style dynamic background from the album art bitmap.
 	 * Extracts vibrant colors, generates a multi-color gradient, and applies a heavy blur.
 	 *
-	 * @param coverArt The raw album art bitmap fetched from the media store.
+	 * @param coverArt The album art bitmap to sample, may be null. Read-only - never recycled.
 	 */
 	private void updateDynamicBackground(final Bitmap coverArt) {
 		if (coverArt == null) {
 			// Fallback to a neutral dark gradient if no art exists
-			runOnUiThread(() -> {
-				GradientDrawable fallback = new GradientDrawable(
+			runOnUiThread(new Runnable() {
+				@Override
+				public void run() {
+					getWindow().setBackgroundDrawable(new GradientDrawable(
 						GradientDrawable.Orientation.TL_BR,
-						new int[]{0xff121212, 0xff1c1c1e}
-				);
-				getWindow().setBackgroundDrawable(fallback);
+						new int[]{ 0xff121212, 0xff1c1c1e }));
+				}
 			});
 			return;
 		}
 
 		// Extract colors on a background thread to prevent UI stuttering
-		Palette.from(coverArt).generate(palette -> {
-			if (palette == null) return;
+		Palette.from(coverArt).generate(new Palette.PaletteAsyncListener() {
+			@Override
+			public void onGenerated(Palette palette) {
+				if (palette == null) return;
 
-			// 1. Extract dynamic color swatches
-			int defaultColor = 0xff2c2c2c;
-			int primaryColor = palette.getVibrantColor(palette.getDominantColor(defaultColor));
-			int secondaryColor = palette.getDarkVibrantColor(palette.getMutedColor(defaultColor));
-			int tertiaryColor = palette.getLightVibrantColor(palette.getLightMutedColor(defaultColor));
+				// 1. Extract dynamic color swatches (Vibrant, Light, Muted)
+				int defaultColor = 0xff2c2c2c;
+				int primaryColor = palette.getVibrantColor(palette.getDominantColor(defaultColor));
+				int secondaryColor = palette.getDarkVibrantColor(palette.getMutedColor(defaultColor));
+				int tertiaryColor = palette.getLightVibrantColor(palette.getLightMutedColor(defaultColor));
 
-			// 2. Generate a base canvas for the multi-color blob mesh
-			int width = 300;
-			int height = 300;
-			Bitmap gradientMesh = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-			Canvas canvas = new Canvas(gradientMesh);
+				// 2. Generate a base canvas to paint our multi-color blob mesh.
+				// Small resolution (300x300): the heavy blur softens it anyway,
+				// and it drastically saves GPU/CPU memory. The resulting
+				// drawable is stretched to fill the window by Android.
+				int width = 300;
+				int height = 300;
+				Bitmap gradientMesh = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+				Canvas canvas = new Canvas(gradientMesh);
 
-			Paint paint = new Paint();
-			paint.setAntiAlias(true);
+				// 3. Paint overlapping soft radial shapes (Apple Music approach)
+				Paint paint = new Paint();
+				paint.setAntiAlias(true);
 
-			// Top-Left Primary Blob
-			paint.setShader(new RadialGradient(0, 0, width * 0.9f,
+				// Top-Left Primary Blob
+				paint.setShader(new RadialGradient(0, 0, width * 0.9f,
 					primaryColor, Color.TRANSPARENT, Shader.TileMode.CLAMP));
-			canvas.drawRect(0, 0, width, height, paint);
+				canvas.drawRect(0, 0, width, height, paint);
 
-			// Bottom-Right Secondary Blob
-			paint.setShader(new RadialGradient(width, height, width * 1.1f,
+				// Bottom-Right Secondary Blob
+				paint.setShader(new RadialGradient(width, height, width * 1.1f,
 					secondaryColor, Color.TRANSPARENT, Shader.TileMode.CLAMP));
-			canvas.drawRect(0, 0, width, height, paint);
+				canvas.drawRect(0, 0, width, height, paint);
 
-			// Top-Right Tertiary Accent Blob
-			paint.setShader(new RadialGradient(width, 0, width * 0.7f,
+				// Top-Right Tertiary Accent Blob
+				paint.setShader(new RadialGradient(width, 0, width * 0.7f,
 					tertiaryColor, Color.TRANSPARENT, Shader.TileMode.CLAMP));
-			canvas.drawRect(0, 0, width, height, paint);
+				canvas.drawRect(0, 0, width, height, paint);
 
-			// 3. Apply a massive Gaussian Blur
-			Bitmap blurredBg = blurBitmap(gradientMesh, 25f); // Max RenderScript radius
+				// 4. Apply a heavy blur to bleed the edges seamlessly
+				Bitmap blurredBg = blurBitmap(gradientMesh, 8);
 
-			// 4. Apply a slight dark tint layer so white text/controls remain readable
-			Canvas finalCanvas = new Canvas(blurredBg);
-			finalCanvas.drawColor(Color.argb(40, 0, 0, 0)); // 15% dark scrim
+				// 5. Apply a slight dark tint layer so white text/controls remain readable
+				Canvas finalCanvas = new Canvas(blurredBg);
+				finalCanvas.drawColor(Color.argb(40, 0, 0, 0)); // 15% dark scrim overlay
 
-			// 5. Set the processed bitmap as the window background on the main thread
-			runOnUiThread(() -> {
-				BitmapDrawable backgroundDrawable = new BitmapDrawable(getResources(), blurredBg);
-				getWindow().setBackgroundDrawable(backgroundDrawable);
-			});
+				// 6. Set the processed bitmap as the window background on the main thread
+				final Bitmap result = blurredBg;
+				runOnUiThread(new Runnable() {
+					@Override
+					public void run() {
+						BitmapDrawable backgroundDrawable = new BitmapDrawable(getResources(), result);
+						getWindow().setBackgroundDrawable(backgroundDrawable);
+					}
+				});
+			}
 		});
 	}
 
 	/**
-	 * Blurs a bitmap using RenderScript (highly optimized hardware acceleration).
+	 * A cheap, dependency-free approximation of a Gaussian blur: downscales
+	 * the bitmap heavily, then scales it back up. The bilinear upscale
+	 * softens hard edges into a convincing blur at a fraction of the cost of
+	 * a real box/Gaussian blur pass.
+	 *
+	 * An earlier version of this used android.renderscript.ScriptIntrinsicBlur
+	 * instead. RenderScript is deprecated (API 31+) and, on some newer
+	 * devices/Android versions, throws on initialization - since that ran on
+	 * a background thread with no try/catch, an uncaught exception there
+	 * crashed the entire app the moment fullscreen mode tried to build a
+	 * background. This version has no such dependency.
+	 *
+	 * @param bitmap bitmap to blur - always a small bitmap we generated
+	 * ourselves (the gradient mesh), never the shared cached cover art, so
+	 * it's always safe to treat as fully owned here.
+	 * @param downscaleFactor how aggressively to downscale before scaling
+	 * back up; higher values blur more.
 	 */
-	private Bitmap blurBitmap(Bitmap bitmap, float radius) {
-		Bitmap outputBitmap = Bitmap.createBitmap(bitmap);
-		RenderScript rs = RenderScript.create(this);
-		ScriptIntrinsicBlur theIntrinsic = ScriptIntrinsicBlur.create(rs, Element.U8_4(rs));
-		Allocation tmpIn = Allocation.createFromBitmap(rs, bitmap);
-		Allocation tmpOut = Allocation.createFromBitmap(rs, outputBitmap);
-		theIntrinsic.setRadius(radius);
-		theIntrinsic.setInput(tmpIn);
-		theIntrinsic.forEach(tmpOut);
-		tmpOut.copyTo(outputBitmap);
-		rs.destroy();
-		return outputBitmap;
+	private Bitmap blurBitmap(Bitmap bitmap, int downscaleFactor) {
+		int smallWidth = Math.max(1, bitmap.getWidth() / downscaleFactor);
+		int smallHeight = Math.max(1, bitmap.getHeight() / downscaleFactor);
+		Bitmap small = Bitmap.createScaledBitmap(bitmap, smallWidth, smallHeight, true);
+		Bitmap blurred = Bitmap.createScaledBitmap(small, bitmap.getWidth(), bitmap.getHeight(), true);
+		if (small != blurred && small != bitmap) small.recycle();
+		return blurred;
 	}
 
 	/**

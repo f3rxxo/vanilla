@@ -91,32 +91,25 @@ public class AlbumArtWallpaper {
 		}
 	}
 
-	/** How heavily to blur the wallpaper background - much stronger than the in-app version, per request. */
-	private static final int WALLPAPER_BLUR_STRENGTH = 70;
-
 	/**
-	 * Composes a wallpaper-sized bitmap: a heavily blurred, edge-to-edge
-	 * copy of the cover art as the background (cropping doesn't matter once
-	 * blurred this strongly), with the sharp cover art scaled to fit fully
-	 * inside the given dimensions - never cropped, never upscaled - centered
-	 * on top.
+	 * Composes a wallpaper-sized bitmap: just the cover art itself, scaled
+	 * and cropped to completely fill the given dimensions edge-to-edge. No
+	 * separate background layer (no blur, no color fill) - the artwork is
+	 * the whole image.
 	 */
 	private static Bitmap composeFullscreenBitmap(Bitmap source, int width, int height) {
 		if (source == null || width < 1 || height < 1)
 			return null;
 
-		Bitmap bitmap = CoverBitmap.createBlurredBackground(source, width, height, WALLPAPER_BLUR_STRENGTH);
-		if (bitmap == null)
-			return null;
-		Canvas canvas = new Canvas(bitmap);
-
 		int sourceWidth = source.getWidth();
 		int sourceHeight = source.getHeight();
-		float scale = Math.min((float)width / sourceWidth, (float)height / sourceHeight);
+		float scale = Math.max((float)width / sourceWidth, (float)height / sourceHeight);
 		int scaledWidth = Math.round(sourceWidth * scale);
 		int scaledHeight = Math.round(sourceHeight * scale);
 
 		Bitmap scaled = Bitmap.createScaledBitmap(source, scaledWidth, scaledHeight, true);
+		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+		Canvas canvas = new Canvas(bitmap);
 		int left = (width - scaledWidth) / 2;
 		int top = (height - scaledHeight) / 2;
 		canvas.drawBitmap(scaled, left, top, new Paint());

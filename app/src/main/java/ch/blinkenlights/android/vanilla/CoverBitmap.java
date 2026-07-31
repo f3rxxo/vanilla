@@ -59,9 +59,10 @@ public final class CoverBitmap {
 	public static final int STYLE_NO_INFO = 2;
 	/**
 	 * Like STYLE_NO_INFO (cover kept at its natural, fit-inside size - never
-	 * upscaled or cropped), but intended to be shown over a blurred-cover
-	 * background (see {@link #createBlurredBackground}) drawn separately by
-	 * the caller so it can extend edge-to-edge behind system bars.
+	 * upscaled or cropped), but intended to be shown over a dynamic
+	 * background built separately by the caller (see
+	 * FullPlaybackActivity#updateDynamicBackground) so it can extend
+	 * edge-to-edge behind system bars.
 	 */
 	public static final int STYLE_FULLSCREEN = 3;
 	/**
@@ -143,86 +144,6 @@ public final class CoverBitmap {
 		default:
 			throw new IllegalArgumentException("Invalid bitmap type given: " + style);
 		}
-	}
-
-	/**
-	 * Builds a full-bleed blurred version of the cover art for use as a
-	 * background behind the (separately drawn, sharp, fit-inside) fullscreen
-	 * artwork: cropped to fill the given dimensions edge-to-edge (cropping
-	 * doesn't matter once blurred), blurred, and darkened slightly for
-	 * legibility of any text/controls drawn on top.
-	 *
-	 * @param source the cover art to blur, may be null
-	 * @param width target width in pixels
-	 * @param height target height in pixels
-	 * @return a ready-to-use bitmap, or null if source/dimensions are invalid
-	 */
-	public static Bitmap createBlurredBackground(Bitmap source, int width, int height) {
-		return createBlurredBackground(source, width, height, 24);
-	}
-
-	/**
-	 * Same as {@link #createBlurredBackground(Bitmap, int, int)}, but with a
-	 * configurable blur strength.
-	 *
-	 * @param blurStrength how heavily to blur; higher is blurrier/softer.
-	 * ~24 gives a moderate blur (in-app background), ~70 gives a very heavy,
-	 * almost abstract blur (barely recognizable as the original artwork).
-	 */
-	public static Bitmap createBlurredBackground(Bitmap source, int width, int height, int blurStrength) {
-		if (source == null || width < 1 || height < 1)
-			return null;
-
-		Bitmap cropped = cropToFill(source, width, height);
-		Bitmap blurred = cheapBlur(cropped, blurStrength);
-		if (cropped != blurred) cropped.recycle();
-
-		Canvas canvas = new Canvas(blurred);
-		// Translucent black wash so white text/controls stay legible
-		// regardless of how bright the source artwork is.
-		canvas.drawColor(0x66000000);
-		return blurred;
-	}
-
-	/**
-	 * Scales the source bitmap so it fully covers the given dimensions,
-	 * cropping any overflow, and centers the result.
-	 */
-	private static Bitmap cropToFill(Bitmap source, int width, int height) {
-		int sourceWidth = source.getWidth();
-		int sourceHeight = source.getHeight();
-		float scale = Math.max((float)width / sourceWidth, (float)height / sourceHeight);
-		int scaledWidth = Math.round(sourceWidth * scale);
-		int scaledHeight = Math.round(sourceHeight * scale);
-
-		Bitmap scaled = Bitmap.createScaledBitmap(source, scaledWidth, scaledHeight, true);
-		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-		Canvas canvas = new Canvas(bitmap);
-		int left = (width - scaledWidth) / 2;
-		int top = (height - scaledHeight) / 2;
-		canvas.drawBitmap(scaled, left, top, new Paint());
-		if (scaled != bitmap) scaled.recycle();
-		return bitmap;
-	}
-
-	/**
-	 * A cheap, dependency-free approximation of a Gaussian blur: downscales
-	 * the bitmap heavily, then scales it back up. The bilinear upscale
-	 * softens hard edges into a convincing blur at a fraction of the cost of
-	 * a real box/Gaussian blur pass, and needs no RenderScript (deprecated)
-	 * or extra libraries.
-	 *
-	 * @param source bitmap to blur
-	 * @param downscaleFactor how aggressively to downscale before scaling
-	 * back up; higher values blur more. 20-30 gives a strong, smooth blur.
-	 */
-	private static Bitmap cheapBlur(Bitmap source, int downscaleFactor) {
-		int smallWidth = Math.max(1, source.getWidth() / downscaleFactor);
-		int smallHeight = Math.max(1, source.getHeight() / downscaleFactor);
-		Bitmap small = Bitmap.createScaledBitmap(source, smallWidth, smallHeight, true);
-		Bitmap blurred = Bitmap.createScaledBitmap(small, source.getWidth(), source.getHeight(), true);
-		if (small != blurred) small.recycle();
-		return blurred;
 	}
 
 	private static Bitmap createOverlappingBitmap(Context context, Bitmap cover, Song song, int width, int height)

@@ -31,12 +31,17 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Message;
-import android.util.DisplayMetrics;
 import android.util.Log;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.RadialGradient;
+import android.graphics.Shader;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import androidx.palette.graphics.Palette;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -240,33 +245,125 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 	}
 
 	/**
-	 * Builds a full-bleed blurred version of the given song's cover art and
-	 * applies it as the window background, so the fullscreen artwork mode
-	 * shows a soft, color-matched backdrop instead of the theme's default
-	 * background. Bitmap decoding and blurring happen on a background
-	 * thread.
+	 * Fetches the given song's cover art on a background thread, then hands
+	 * it off to {@link #updateDynamicBackground} to build the fullscreen
+	 * mode's background.
 	 *
-	 * @param song the song whose cover art should be blurred, may be null
+	 * @param song the song whose cover art should be used, may be null
 	 */
 	private void updateFullscreenBackground(final Song song)
 	{
-		final DisplayMetrics metrics = getResources().getDisplayMetrics();
 		new Thread(new Runnable() {
 			@Override
 			public void run() {
-				final Bitmap cover = song == null ? null : song.getLargeCover(FullPlaybackActivity.this);
-				final Bitmap blurred = CoverBitmap.createBlurredBackground(cover, metrics.widthPixels, metrics.heightPixels);
-				if (blurred == null)
-					return;
-				final BitmapDrawable background = new BitmapDrawable(getResources(), blurred);
+				// NOTE: getLargeCover() returns a bitmap owned by Song's
+				// shared static cache, not a fresh copy - it must never be
+				// recycled here, only read from.
+				Bitmap coverArt = song == null ? null : song.getLargeCover(FullPlaybackActivity.this);
+				updateDynamicBackground(coverArt);
+			}
+		}).start();
+	}
+
+	/**
+	 * Generates a Spotify/Apple Music-style dynamic background from the album art bitmap.
+	 * Extracts vibrant colors, generates a multi-color gradient, and applies a heavy blur.
+	 *
+	 * @param coverArt The album art bitmap to sample, may be null. Read-only - never recycled.
+	 */
+	private void updateDynamicBackground(final Bitmap coverArt) {
+		if (coverArt == null) {
+			// Fallback to a neutral dark gradient if no art exists
+			runOnUiThread(new Runnable() {
+				@Override
+				public void run() {
+					getWindow().setBackgroundDrawable(new GradientDrawable(
+						GradientDrawable.Orientation.TL_BR,
+						new int[]{ 0xff121212, 0xff1c1c1e }));
+				}
+			});
+			return;
+		}
+
+		// Extract colors on a background thread to prevent UI stuttering
+		Palette.from(coverArt).generate(new Palette.PaletteAsyncListener() {
+			@Override
+			public void onGenerated(Palette palette) {
+				if (palette == null) return;
+
+				// 1. Extract dynamic color swatches (Vibrant, Light, Muted)
+				int defaultColor = 0xff2c2c2c;
+				int primaryColor = palette.getVibrantColor(palette.getDominantColor(defaultColor));
+				int secondaryColor = palette.getDarkVibrantColor(palette.getMutedColor(defaultColor));
+				int tertiaryColor = palette.getLightVibrantColor(palette.getLightMutedColor(defaultColor));
+
+				// 2. Generate a base canvas to paint our multi-color blob mesh.
+				// Small resolution (300x300): the heavy blur softens it anyway,
+				// and it drastically saves GPU/CPU memory. The resulting
+				// drawable is stretched to fill the window by Android.
+				int width = 300;
+				int height = 300;
+				Bitmap gradientMesh = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+				Canvas canvas = new Canvas(gradientMesh);
+
+				// 3. Paint overlapping soft radial shapes (Apple Music approach)
+				Paint paint = new Paint();
+				paint.setAntiAlias(true);
+
+				// Top-Left Primary Blob
+				paint.setShader(new RadialGradient(0, 0, width * 0.9f,
+					primaryColor, Color.TRANSPARENT, Shader.TileMode.CLAMP));
+				canvas.drawRect(0, 0, width, height, paint);
+
+				// Bottom-Right Secondary Blob
+				paint.setShader(new RadialGradient(width, height, width * 1.1f,
+					secondaryColor, Color.TRANSPARENT, Shader.TileMode.CLAMP));
+				canvas.drawRect(0, 0, width, height, paint);
+
+				// Top-Right Tertiary Accent Blob
+				paint.setShader(new RadialGradient(width, 0, width * 0.7f,
+					tertiaryColor, Color.TRANSPARENT, Shader.TileMode.CLAMP));
+				canvas.drawRect(0, 0, width, height, paint);
+
+				// 4. Apply a heavy Gaussian blur to bleed the edges seamlessly
+				Bitmap blurredBg = blurBitmap(gradientMesh, 25f); // max RenderScript radius
+
+				// 5. Apply a slight dark tint layer so white text/controls remain readable
+				Canvas finalCanvas = new Canvas(blurredBg);
+				finalCanvas.drawColor(Color.argb(40, 0, 0, 0)); // 15% dark scrim overlay
+
+				// 6. Set the processed bitmap as the window background on the main thread
+				final Bitmap result = blurredBg;
 				runOnUiThread(new Runnable() {
 					@Override
 					public void run() {
-						getWindow().getDecorView().setBackground(background);
+						BitmapDrawable backgroundDrawable = new BitmapDrawable(getResources(), result);
+						getWindow().setBackgroundDrawable(backgroundDrawable);
 					}
 				});
 			}
-		}).start();
+		});
+	}
+
+	/**
+	 * Blurs a bitmap using RenderScript (highly optimized hardware acceleration).
+	 * NOTE: android.renderscript.* is deprecated as of API 31, though still
+	 * functional as of this writing. If a future Android version removes it
+	 * entirely, this is the method that will need replacing (e.g. with
+	 * RenderEffect on API 31+, with a fallback for older devices).
+	 */
+	private Bitmap blurBitmap(Bitmap bitmap, float radius) {
+		Bitmap outputBitmap = Bitmap.createBitmap(bitmap);
+		android.renderscript.RenderScript rs = android.renderscript.RenderScript.create(this);
+		android.renderscript.ScriptIntrinsicBlur theIntrinsic = android.renderscript.ScriptIntrinsicBlur.create(rs, android.renderscript.Element.U8_4(rs));
+		android.renderscript.Allocation tmpIn = android.renderscript.Allocation.createFromBitmap(rs, bitmap);
+		android.renderscript.Allocation tmpOut = android.renderscript.Allocation.createFromBitmap(rs, outputBitmap);
+		theIntrinsic.setRadius(radius);
+		theIntrinsic.setInput(tmpIn);
+		theIntrinsic.forEach(tmpOut);
+		tmpOut.copyTo(outputBitmap);
+		rs.destroy();
+		return outputBitmap;
 	}
 
 	/**

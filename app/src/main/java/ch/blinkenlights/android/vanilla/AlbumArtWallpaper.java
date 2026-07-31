@@ -20,11 +20,19 @@ package ch.blinkenlights.android.vanilla;
 import android.app.WallpaperManager;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.os.Build;
+import android.os.ParcelFileDescriptor;
 import android.util.DisplayMetrics;
 import android.util.Log;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 /**
  * Sets the currently playing song's album art as the lock screen wallpaper.
@@ -34,6 +42,7 @@ import android.util.Log;
 public class AlbumArtWallpaper {
 
 	private static final String TAG = "VanillaMusic";
+	private static final String ORIGINAL_WALLPAPER_FILENAME = "original_lock_wallpaper.png";
 
 	/**
 	 * Updates the lock screen wallpaper to the given song's album art, if
@@ -53,6 +62,8 @@ public class AlbumArtWallpaper {
 		Bitmap cover = song.getLargeCover(context);
 		if (cover == null)
 			return;
+
+		saveOriginalIfNeeded(context);
 
 		try {
 			WallpaperManager manager = WallpaperManager.getInstance(context);
@@ -88,6 +99,88 @@ public class AlbumArtWallpaper {
 			// not support this - this is a cosmetic feature, so just log
 			// and move on rather than disrupting playback.
 			Log.w(TAG, "Failed to set album art wallpaper", e);
+		}
+	}
+
+	/**
+	 * Restores whatever lock screen wallpaper was in place before this
+	 * feature first changed it, if we managed to save a copy. If we never
+	 * captured one (e.g. the original was a live/dynamic wallpaper, which
+	 * can't be saved as a static image), falls back to
+	 * WallpaperManager.clear(), which drops the lock-specific override so
+	 * the lock screen reverts to matching the home screen wallpaper - not a
+	 * perfect restore, but better than being stuck on the last album art.
+	 * Should be called from a background thread.
+	 *
+	 * @param context the context to use
+	 */
+	public static void restoreOriginal(Context context) {
+		File savedFile = new File(context.getFilesDir(), ORIGINAL_WALLPAPER_FILENAME);
+		try {
+			WallpaperManager manager = WallpaperManager.getInstance(context);
+			if (Build.VERSION.SDK_INT < 24) {
+				return;
+			}
+			if (savedFile.exists()) {
+				Bitmap original = BitmapFactory.decodeFile(savedFile.getAbsolutePath());
+				if (original != null) {
+					manager.setBitmap(original, null, true, WallpaperManager.FLAG_LOCK);
+					return;
+				}
+			}
+			// No saved original (or it failed to decode): best effort, drop
+			// our override rather than leaving stale album art in place.
+			manager.clear(WallpaperManager.FLAG_LOCK);
+		} catch (Exception e) {
+			Log.w(TAG, "Failed to restore original lock screen wallpaper", e);
+		}
+	}
+
+	/**
+	 * Captures whatever lock screen wallpaper is currently set, the first
+	 * time this feature is ever used, so it can be restored later. Does
+	 * nothing on subsequent calls (so we never accidentally save one of our
+	 * own album-art wallpapers as the "original"). Best-effort: if the
+	 * current wallpaper is a live/dynamic one, there is nothing to save and
+	 * this silently does nothing.
+	 */
+	private static void saveOriginalIfNeeded(Context context) {
+		File savedFile = new File(context.getFilesDir(), ORIGINAL_WALLPAPER_FILENAME);
+		if (savedFile.exists())
+			return;
+
+		if (Build.VERSION.SDK_INT < 24)
+			return;
+
+		ParcelFileDescriptor pfd = null;
+		try {
+			WallpaperManager manager = WallpaperManager.getInstance(context);
+			pfd = manager.getWallpaperFile(WallpaperManager.FLAG_LOCK);
+			if (pfd == null) {
+				// No lock-specific wallpaper file: the lock screen is
+				// currently just mirroring the home screen wallpaper.
+				pfd = manager.getWallpaperFile(WallpaperManager.FLAG_SYSTEM);
+			}
+			if (pfd == null) {
+				// Likely a live/dynamic wallpaper - nothing we can capture.
+				return;
+			}
+
+			InputStream in = new FileInputStream(pfd.getFileDescriptor());
+			OutputStream out = new FileOutputStream(savedFile);
+			byte[] buffer = new byte[8192];
+			int read;
+			while ((read = in.read(buffer)) != -1) {
+				out.write(buffer, 0, read);
+			}
+			out.close();
+			// Deliberately not closing `in`: it's backed by pfd, closed below.
+		} catch (Exception e) {
+			Log.w(TAG, "Failed to save original lock screen wallpaper", e);
+		} finally {
+			if (pfd != null) {
+				try { pfd.close(); } catch (Exception ignored) {}
+			}
 		}
 	}
 

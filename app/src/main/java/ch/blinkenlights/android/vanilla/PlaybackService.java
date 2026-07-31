@@ -631,6 +631,21 @@ public final class PlaybackService extends Service
 		// clear the notification
 		stopForeground(true);
 
+		if (mWallpaperAlbumArt) {
+			// Best-effort: this runs on normal teardown (task swiped away,
+			// system reclaiming resources), but NOT when the user force-stops
+			// the app from Android settings - that kills the process
+			// immediately with no chance to run any cleanup code, which is
+			// an OS-level restriction with no app-side workaround.
+			final Context appContext = getApplicationContext();
+			new Thread(new Runnable() {
+				@Override
+				public void run() {
+					AlbumArtWallpaper.restoreOriginal(appContext);
+				}
+			}).start();
+		}
+
 		// defer wakelock and close audioFX
 		enterSleepState();
 
@@ -957,13 +972,20 @@ public final class PlaybackService extends Service
 			}
 		} else if (PrefKeys.WALLPAPER_ALBUM_ART.equals(key)) {
 			mWallpaperAlbumArt = settings.getBoolean(PrefKeys.WALLPAPER_ALBUM_ART, PrefDefaults.WALLPAPER_ALBUM_ART);
+			final Context appContext = getApplicationContext();
 			if (mWallpaperAlbumArt) {
-				final Context appContext = getApplicationContext();
 				final Song song = getSong(0);
 				new Thread(new Runnable() {
 					@Override
 					public void run() {
 						AlbumArtWallpaper.update(appContext, song);
+					}
+				}).start();
+			} else {
+				new Thread(new Runnable() {
+					@Override
+					public void run() {
+						AlbumArtWallpaper.restoreOriginal(appContext);
 					}
 				}).start();
 			}

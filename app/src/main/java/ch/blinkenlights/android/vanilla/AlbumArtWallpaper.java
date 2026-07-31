@@ -23,6 +23,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.os.Build;
+import android.util.DisplayMetrics;
 import android.util.Log;
 
 /**
@@ -55,14 +56,21 @@ public class AlbumArtWallpaper {
 
 		try {
 			WallpaperManager manager = WallpaperManager.getInstance(context);
-			int desiredWidth = manager.getDesiredMinimumWidth();
-			int desiredHeight = manager.getDesiredMinimumHeight();
-			if (desiredWidth <= 0 || desiredHeight <= 0) {
-				desiredWidth = cover.getWidth();
-				desiredHeight = cover.getHeight();
+			// Deliberately not using manager.getDesiredMinimumWidth/Height():
+			// those are often larger than the actual screen (extra width for
+			// home-screen parallax scrolling), so an image composed at that
+			// size gets center-cropped by the system to fit the real lock
+			// screen viewport - which looked like unwanted zoom. The actual
+			// screen size avoids that entirely.
+			DisplayMetrics metrics = context.getResources().getDisplayMetrics();
+			int width = metrics.widthPixels;
+			int height = metrics.heightPixels;
+			if (width <= 0 || height <= 0) {
+				width = cover.getWidth();
+				height = cover.getHeight();
 			}
 
-			Bitmap wallpaper = composeFullscreenBitmap(cover, desiredWidth, desiredHeight);
+			Bitmap wallpaper = composeFullscreenBitmap(cover, width, height);
 			if (wallpaper == null)
 				return;
 

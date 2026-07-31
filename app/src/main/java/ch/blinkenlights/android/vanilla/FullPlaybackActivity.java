@@ -325,8 +325,8 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 					tertiaryColor, Color.TRANSPARENT, Shader.TileMode.CLAMP));
 				canvas.drawRect(0, 0, width, height, paint);
 
-				// 4. Apply a heavy Gaussian blur to bleed the edges seamlessly
-				Bitmap blurredBg = blurBitmap(gradientMesh, 25f); // max RenderScript radius
+				// 4. Apply a heavy blur to bleed the edges seamlessly
+				Bitmap blurredBg = blurBitmap(gradientMesh, 8);
 
 				// 5. Apply a slight dark tint layer so white text/controls remain readable
 				Canvas finalCanvas = new Canvas(blurredBg);
@@ -346,24 +346,31 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 	}
 
 	/**
-	 * Blurs a bitmap using RenderScript (highly optimized hardware acceleration).
-	 * NOTE: android.renderscript.* is deprecated as of API 31, though still
-	 * functional as of this writing. If a future Android version removes it
-	 * entirely, this is the method that will need replacing (e.g. with
-	 * RenderEffect on API 31+, with a fallback for older devices).
+	 * A cheap, dependency-free approximation of a Gaussian blur: downscales
+	 * the bitmap heavily, then scales it back up. The bilinear upscale
+	 * softens hard edges into a convincing blur at a fraction of the cost of
+	 * a real box/Gaussian blur pass.
+	 *
+	 * An earlier version of this used android.renderscript.ScriptIntrinsicBlur
+	 * instead. RenderScript is deprecated (API 31+) and, on some newer
+	 * devices/Android versions, throws on initialization - since that ran on
+	 * a background thread with no try/catch, an uncaught exception there
+	 * crashed the entire app the moment fullscreen mode tried to build a
+	 * background. This version has no such dependency.
+	 *
+	 * @param bitmap bitmap to blur - always a small bitmap we generated
+	 * ourselves (the gradient mesh), never the shared cached cover art, so
+	 * it's always safe to treat as fully owned here.
+	 * @param downscaleFactor how aggressively to downscale before scaling
+	 * back up; higher values blur more.
 	 */
-	private Bitmap blurBitmap(Bitmap bitmap, float radius) {
-		Bitmap outputBitmap = Bitmap.createBitmap(bitmap);
-		android.renderscript.RenderScript rs = android.renderscript.RenderScript.create(this);
-		android.renderscript.ScriptIntrinsicBlur theIntrinsic = android.renderscript.ScriptIntrinsicBlur.create(rs, android.renderscript.Element.U8_4(rs));
-		android.renderscript.Allocation tmpIn = android.renderscript.Allocation.createFromBitmap(rs, bitmap);
-		android.renderscript.Allocation tmpOut = android.renderscript.Allocation.createFromBitmap(rs, outputBitmap);
-		theIntrinsic.setRadius(radius);
-		theIntrinsic.setInput(tmpIn);
-		theIntrinsic.forEach(tmpOut);
-		tmpOut.copyTo(outputBitmap);
-		rs.destroy();
-		return outputBitmap;
+	private Bitmap blurBitmap(Bitmap bitmap, int downscaleFactor) {
+		int smallWidth = Math.max(1, bitmap.getWidth() / downscaleFactor);
+		int smallHeight = Math.max(1, bitmap.getHeight() / downscaleFactor);
+		Bitmap small = Bitmap.createScaledBitmap(bitmap, smallWidth, smallHeight, true);
+		Bitmap blurred = Bitmap.createScaledBitmap(small, bitmap.getWidth(), bitmap.getHeight(), true);
+		if (small != blurred && small != bitmap) small.recycle();
+		return blurred;
 	}
 
 	/**

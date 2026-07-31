@@ -1148,8 +1148,14 @@ public final class PlaybackService extends Service
 		if (mReadaheadEnabled)
 			triggerReadAhead();
 
-		mRemoteControlClient.updateRemote(mCurrentSong, mState, mForceNotificationVisible);
-		mMediaSessionTracker.updateSession(mCurrentSong, mState);
+		// Use the song this broadcast was actually generated for, not
+		// whatever mCurrentSong currently holds: if another song change is
+		// queued up right behind this one, mCurrentSong may have already
+		// moved on by the time this message is processed, which was
+		// showing stale/wrong metadata on the lock screen widget.
+		Song sessionSong = (song != null) ? song : mCurrentSong;
+		mRemoteControlClient.updateRemote(sessionSong, mState, mForceNotificationVisible);
+		mMediaSessionTracker.updateSession(sessionSong, mState);
 
 		scrobbleBroadcast();
 	}

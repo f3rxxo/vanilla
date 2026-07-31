@@ -217,6 +217,17 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 		if (getActionBar() != null) {
 			getActionBar().hide();
 		}
+
+		View seekBar = findViewById(R.id.fullscreen_seek_bar);
+		if (seekBar != null) {
+			seekBar.setBackgroundColor(Color.TRANSPARENT);
+			seekBar.setElevation(0f);
+		}
+		View controls = findViewById(R.id.queue_slider);
+		if (controls != null) {
+			controls.setBackgroundColor(Color.TRANSPARENT);
+			controls.setElevation(0f);
+		}
 	}
 
 	/**

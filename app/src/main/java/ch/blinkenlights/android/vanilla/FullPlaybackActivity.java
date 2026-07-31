@@ -218,6 +218,15 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 			getActionBar().hide();
 		}
 
+		// SlidingView (the container for the controls panel + queue) paints
+		// its own opaque theme background color across the full screen by
+		// default - this, not the controls panel itself, was the real
+		// source of the grey strip.
+		View slidingView = findViewById(R.id.sliding_view);
+		if (slidingView != null) {
+			slidingView.setBackgroundColor(Color.TRANSPARENT);
+		}
+
 		View seekBar = findViewById(R.id.fullscreen_seek_bar);
 		if (seekBar != null) {
 			seekBar.setBackgroundColor(Color.TRANSPARENT);

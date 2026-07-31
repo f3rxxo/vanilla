@@ -158,11 +158,23 @@ public final class CoverBitmap {
 	 * @return a ready-to-use bitmap, or null if source/dimensions are invalid
 	 */
 	public static Bitmap createBlurredBackground(Bitmap source, int width, int height) {
+		return createBlurredBackground(source, width, height, 24);
+	}
+
+	/**
+	 * Same as {@link #createBlurredBackground(Bitmap, int, int)}, but with a
+	 * configurable blur strength.
+	 *
+	 * @param blurStrength how heavily to blur; higher is blurrier/softer.
+	 * ~24 gives a moderate blur (in-app background), ~70 gives a very heavy,
+	 * almost abstract blur (barely recognizable as the original artwork).
+	 */
+	public static Bitmap createBlurredBackground(Bitmap source, int width, int height, int blurStrength) {
 		if (source == null || width < 1 || height < 1)
 			return null;
 
 		Bitmap cropped = cropToFill(source, width, height);
-		Bitmap blurred = cheapBlur(cropped, 24);
+		Bitmap blurred = cheapBlur(cropped, blurStrength);
 		if (cropped != blurred) cropped.recycle();
 
 		Canvas canvas = new Canvas(blurred);

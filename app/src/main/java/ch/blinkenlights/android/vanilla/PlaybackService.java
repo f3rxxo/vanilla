@@ -1749,9 +1749,9 @@ public final class PlaybackService extends Service
 			mMediaSessionTracker.updateSession(mCurrentSong, mState);
 			break;
 		case MSG_UPDATE_LOCKSCREEN: {
-			Song song = (Song)message.obj;
-			updateNotification(song);
-			mMediaSessionTracker.updateSession(song, mState);
+			Song lockscreenSong = (Song)message.obj;
+			updateNotification(lockscreenSong);
+			mMediaSessionTracker.updateSession(lockscreenSong, mState);
 			break;
 		}
 		default:

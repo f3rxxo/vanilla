@@ -1248,10 +1248,22 @@ public final class PlaybackService extends Service
 
 	private void updateNotification()
 	{
-		if (mCurrentSong != null) {
+		updateNotification(mCurrentSong);
+	}
+
+	/**
+	 * Same as {@link #updateNotification()}, but lets the caller supply the
+	 * song explicitly instead of reading the mutable mCurrentSong field -
+	 * important for callers (like processSong()) that already have the
+	 * exact song this update is for in hand, since mCurrentSong could in
+	 * theory have already moved on to a later song by the time this runs.
+	 */
+	private void updateNotification(Song song)
+	{
+		if (song != null) {
 			// We always update the notification, even if we are about to cancel it as it may still stick around
 			// for a few seconds and we want to ensure that we are showing the correct state.
-			mNotificationHelper.notify(NOTIFICATION_ID, createNotification(mCurrentSong, mState));
+			mNotificationHelper.notify(NOTIFICATION_ID, createNotification(song, mState));
 		}
 		if (!(mForceNotificationVisible ||
 			 mNotificationVisibility == VISIBILITY_ALWAYS ||
@@ -1483,7 +1495,7 @@ public final class PlaybackService extends Service
 
 		}
 
-		updateNotification();
+		updateNotification(song);
 
 	}
 

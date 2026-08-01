@@ -286,7 +286,13 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 		}
 
 		// Extract colors on a background thread to prevent UI stuttering
-		Palette.from(coverArt).generate(new Palette.PaletteAsyncListener() {
+		// Cap the area Palette analyzes: getLargeCover() can return a fairly
+		// large bitmap (sized for fullscreen display), and Palette's default
+		// resize limit is tuned for typical thumbnail sizes. Without an
+		// explicit cap here, the histogram pass over a large bitmap was
+		// almost certainly the source of the multi-second delay before the
+		// background/song info appeared.
+		Palette.from(coverArt).resizeBitmapArea(112 * 112).generate(new Palette.PaletteAsyncListener() {
 			@Override
 			public void onGenerated(Palette palette) {
 				if (palette == null) return;

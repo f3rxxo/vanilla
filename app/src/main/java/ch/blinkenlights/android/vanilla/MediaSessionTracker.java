@@ -116,7 +116,15 @@ public class MediaSessionTracker {
 			.build();
 
 		if (song != null) {
-			final Bitmap cover = song.getMediumCover(mContext);
+			// Use the small cover variant here: this feeds MediaMetadata,
+			// which gets sent to SystemUI/the lock screen over IPC on every
+			// single song change. The medium variant (SIZE_MEDIUM, ~240dp)
+			// is a needlessly large payload for what's shown as a small
+			// lock screen thumbnail - on a modern high-density screen that's
+			// a 1-2MB+ bitmap being pushed through repeatedly, which is a
+			// plausible source of the album-art-specific lag reported
+			// (no album art => tiny/no payload => always fast and correct).
+			final Bitmap cover = song.getSmallCover(mContext);
 			MediaMetadataCompat.Builder metadataBuilder = new MediaMetadataCompat.Builder()
 				.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, song.artist)
 				.putString(MediaMetadataCompat.METADATA_KEY_ALBUM, song.album)

@@ -1162,7 +1162,22 @@ public final class PlaybackService extends Service
 				list.get(i).setSong(uptime, song);
 
 			if (mWallpaperAlbumArt) {
-				AlbumArtWallpaper.update(getApplicationContext(), song);
+				// Run on its own thread: this involves bitmap I/O and a
+				// WallpaperManager IPC call that can easily take over a
+				// second. Running it inline here was blocking the
+				// notification/MediaSession updates below it in this same
+				// method behind that delay on every single song change -
+				// which is what was actually causing the lock screen widget
+				// to appear "one song behind" (the data was always correct,
+				// it just hadn't been posted yet).
+				final Context appContext = getApplicationContext();
+				final Song wallpaperSong = song;
+				new Thread(new Runnable() {
+					@Override
+					public void run() {
+						AlbumArtWallpaper.update(appContext, wallpaperSong);
+					}
+				}).start();
 			}
 		}
 

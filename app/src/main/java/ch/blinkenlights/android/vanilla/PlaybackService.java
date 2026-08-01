@@ -1186,15 +1186,18 @@ public final class PlaybackService extends Service
 		if (mReadaheadEnabled)
 			triggerReadAhead();
 
-		// Use the song this broadcast was actually generated for, not
-		// whatever mCurrentSong currently holds: if another song change is
-		// queued up right behind this one, mCurrentSong may have already
-		// moved on by the time this message is processed, which was
-		// showing stale/wrong metadata on the lock screen widget.
-		Song sessionSong = (song != null) ? song : mCurrentSong;
-		Log.d("VanillaDebug", "broadcastChange: updateSession(" + (sessionSong == null ? "null" : sessionSong.title) + ") at " + System.currentTimeMillis());
-		mRemoteControlClient.updateRemote(sessionSong, mState, mForceNotificationVisible);
-		mMediaSessionTracker.updateSession(sessionSong, mState);
+		if (song != null) {
+			mRemoteControlClient.updateRemote(song, mState, mForceNotificationVisible);
+			Log.d("VanillaDebug", "broadcastChange: debouncing lock screen update for " + song.title + " at " + System.currentTimeMillis());
+			mHandler.removeMessages(MSG_UPDATE_LOCKSCREEN);
+			mHandler.sendMessageDelayed(mHandler.obtainMessage(MSG_UPDATE_LOCKSCREEN, song), 200);
+		} else {
+			// State-only change (e.g. pause/play toggle): not a rapid-fire
+			// scenario, and users expect instant feedback here, so this
+			// stays immediate rather than debounced.
+			mRemoteControlClient.updateRemote(mCurrentSong, mState, mForceNotificationVisible);
+			mMediaSessionTracker.updateSession(mCurrentSong, mState);
+		}
 
 		scrobbleBroadcast();
 	}
@@ -1517,8 +1520,9 @@ public final class PlaybackService extends Service
 
 		}
 
-		Log.d("VanillaDebug", "processSong: about to updateNotification(" + song.title + ") at " + System.currentTimeMillis());
-		updateNotification(song);
+		Log.d("VanillaDebug", "processSong: debouncing lock screen update for " + song.title + " at " + System.currentTimeMillis());
+		mHandler.removeMessages(MSG_UPDATE_LOCKSCREEN);
+		mHandler.sendMessageDelayed(mHandler.obtainMessage(MSG_UPDATE_LOCKSCREEN, song), 200);
 
 	}
 
@@ -1645,6 +1649,10 @@ public final class PlaybackService extends Service
 	 * The current song's playback position changed.
 	 */
 	private static final int MSG_BROADCAST_SEEK = 19;
+	/**
+	 * Debounced song-change notification/session update - see MSG_UPDATE_LOCKSCREEN handling.
+	 */
+	private static final int MSG_UPDATE_LOCKSCREEN = 20;
 
 	@Override
 	public boolean handleMessage(Message message)
@@ -1740,6 +1748,12 @@ public final class PlaybackService extends Service
 			mRemoteControlClient.updateRemote(mCurrentSong, mState, mForceNotificationVisible);
 			mMediaSessionTracker.updateSession(mCurrentSong, mState);
 			break;
+		case MSG_UPDATE_LOCKSCREEN: {
+			Song song = (Song)message.obj;
+			updateNotification(song);
+			mMediaSessionTracker.updateSession(song, mState);
+			break;
+		}
 		default:
 			return false;
 		}

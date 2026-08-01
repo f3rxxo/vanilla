@@ -66,6 +66,12 @@ public final class CoverBitmap {
 	 */
 	public static final int STYLE_FULLSCREEN = 3;
 	/**
+	 * Cover cropped and scaled to completely fill the given dimensions
+	 * edge-to-edge (no letterboxing, no separate background needed), no
+	 * song info drawn on top. Used for the tap-to-open lock screen view.
+	 */
+	public static final int STYLE_FULLSCREEN_CROP = 4;
+	/**
 	 * Whether or not to debug painting operations.
 	 */
 	private static final boolean DEBUG_PAINT = false;
@@ -141,6 +147,8 @@ public final class CoverBitmap {
 		case STYLE_NO_INFO:
 		case STYLE_FULLSCREEN:
 			return createScaledBitmap(coverArt, width, height);
+		case STYLE_FULLSCREEN_CROP:
+			return createCroppedBitmap(coverArt, width, height);
 		default:
 			throw new IllegalArgumentException("Invalid bitmap type given: " + style);
 		}
@@ -325,6 +333,40 @@ public final class CoverBitmap {
 		sourceHeight *= scale;
 		Bitmap scaled = Bitmap.createScaledBitmap(source, (int)(SLACK_RATIO*sourceWidth), (int)(SLACK_RATIO*sourceHeight), true);
 		return createBorderedBitmap(scaled, sourceWidth, sourceHeight);
+	}
+
+	/**
+	 * Scales the source bitmap so it completely covers the given dimensions,
+	 * cropping any overflow, and centers the result. Unlike
+	 * createScaledBitmap(), this never leaves any letterbox gap - the whole
+	 * canvas is covered by cropped artwork.
+	 *
+	 * NOTE: never recycles `source` - it may be a bitmap owned by Song's
+	 * shared static cache, not a fresh copy. Bitmap.createScaledBitmap()
+	 * can return the input unchanged when the requested size already
+	 * matches, so recycling its result without checking for that has
+	 * corrupted the shared cache before - this only ever recycles bitmaps
+	 * this method created itself, and only after confirming they aren't
+	 * just an alias for `source`.
+	 */
+	private static Bitmap createCroppedBitmap(Bitmap source, int width, int height)
+	{
+		int sourceWidth = source.getWidth();
+		int sourceHeight = source.getHeight();
+		float scale = Math.max((float)width / sourceWidth, (float)height / sourceHeight);
+		int scaledWidth = Math.round(sourceWidth * scale);
+		int scaledHeight = Math.round(sourceHeight * scale);
+
+		Bitmap scaled = Bitmap.createScaledBitmap(source, scaledWidth, scaledHeight, true);
+		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+		Canvas canvas = new Canvas(bitmap);
+		int left = (width - scaledWidth) / 2;
+		int top = (height - scaledHeight) / 2;
+		canvas.drawBitmap(scaled, left, top, new Paint());
+		if (scaled != bitmap && scaled != source) {
+			scaled.recycle();
+		}
+		return bitmap;
 	}
 
 	/**

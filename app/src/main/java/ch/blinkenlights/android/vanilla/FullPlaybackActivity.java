@@ -56,6 +56,7 @@ import android.widget.TableLayout;
 import android.widget.TableRow;
 import android.widget.TextView;
 import android.app.AlertDialog;
+import android.app.KeyguardManager;
 import android.content.DialogInterface;
 
 /**
@@ -115,6 +116,11 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 	private String mReplayGain;
 	private TextView mReplayGainView;
 	private MenuItem mFavorites;
+	/**
+	 * Whether this instance was launched while the device was locked. See
+	 * onCreate() for how this is determined.
+	 */
+	private boolean mOpenedFromLockScreen;
 
 	@Override
 	public void onCreate(Bundle icicle)
@@ -137,6 +143,14 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 				| WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
 				| WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 		}
+
+		// Whether this instance was launched while the device was locked
+		// (e.g. tapping the notification from the lock screen). Used to
+		// give the lock screen case a different look: cropped edge-to-edge
+		// art with no blurred background, vs. the normal in-app view's
+		// natural-size art over a blurred background.
+		KeyguardManager keyguardManager = (KeyguardManager)getSystemService(KEYGUARD_SERVICE);
+		mOpenedFromLockScreen = keyguardManager != null && keyguardManager.isKeyguardLocked();
 
 		setTitle(R.string.playback_view);
 
@@ -162,7 +176,7 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 			coverStyle = CoverBitmap.STYLE_INFO_BELOW;
 			break;
 		case DISPLAY_INFO_FULLSCREEN:
-			coverStyle = CoverBitmap.STYLE_FULLSCREEN;
+			coverStyle = mOpenedFromLockScreen ? CoverBitmap.STYLE_FULLSCREEN_CROP : CoverBitmap.STYLE_FULLSCREEN;
 			layout = R.layout.full_playback_fullscreen;
 			break;
 		}
@@ -487,7 +501,13 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 			// enough (once per song change, not per frame) to not matter
 			// for performance.
 			getWindow().getDecorView().invalidate();
-			updateFullscreenBackground(song);
+			if (!mOpenedFromLockScreen) {
+				// The lock screen view uses crop-fill art, which already
+				// covers the entire screen - no letterbox gap, so no
+				// background layer (and no async Palette/blur pipeline) is
+				// needed there at all.
+				updateFullscreenBackground(song);
+			}
 		}
 
 		mHandler.sendEmptyMessage(MSG_LOAD_FAVOURITE_INFO);

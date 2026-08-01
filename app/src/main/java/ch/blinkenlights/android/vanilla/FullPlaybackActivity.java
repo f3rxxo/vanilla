@@ -478,6 +478,15 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 		mCurrentSong = song;
 
 		if (mDisplayMode == DISPLAY_INFO_FULLSCREEN) {
+			// Force a full redraw rather than relying on partial
+			// invalidation: with this many overlapping transparent views
+			// (SlidingView, the controls panel, the seek bar), Android's
+			// dirty-region tracking appears to sometimes leave stale pixels
+			// from the previous song's text/seek position visible until
+			// something else forces a full redraw. This should be cheap
+			// enough (once per song change, not per frame) to not matter
+			// for performance.
+			getWindow().getDecorView().invalidate();
 			updateFullscreenBackground(song);
 		}
 

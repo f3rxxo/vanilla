@@ -441,7 +441,9 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 				mAlbum.setText(song.album);
 				mArtist.setText(song.artist);
 			}
-			updateQueuePosition();
+			if (mQueuePosView != null) {
+				updateQueuePosition();
+			}
 		}
 
 		mCurrentSong = song;

@@ -348,9 +348,12 @@ public class CoverCache {
 			trim(mCacheSize);
 
 			ByteArrayOutputStream out = new ByteArrayOutputStream();
-			// We store a lossy version as this image was
-			// created from the original source (and will not be re-compressed)
-			cover.compress(Bitmap.CompressFormat.JPEG, 85, out);
+			// Was quality 85, which is visibly lossy especially around
+			// sharp edges/text on covers (parental advisory stickers,
+			// artist name overlays, etc). 95 is still lossy JPEG but the
+			// artifacting is much less noticeable, for a modest size
+			// increase in the disk cache.
+			cover.compress(Bitmap.CompressFormat.JPEG, 95, out);
 
 			Random rnd = new Random();
 			long ttl = getUnixTime() + rnd.nextInt(OBJECT_TTL);
@@ -485,7 +488,14 @@ public class CoverCache {
 
 				if (inputStream != null) {
 					BitmapFactory.Options bopts = new BitmapFactory.Options();
-					bopts.inPreferredConfig  = Bitmap.Config.RGB_565;
+					// ARGB_8888 (32-bit, ~16.7M colors) instead of RGB_565
+					// (16-bit, ~65K colors): RGB_565 causes visible color
+					// banding, especially in smooth gradients - which is
+					// exactly what the blurred fullscreen backgrounds are
+					// made of. Uses more memory per bitmap, but cover art
+					// bitmaps are downsampled to begin with, so this is a
+					// modest increase for a real quality difference.
+					bopts.inPreferredConfig  = Bitmap.Config.ARGB_8888;
 					bopts.inJustDecodeBounds = true;
 
 					final int inSampleSize   = getSampleSize(sampleInputStream, bopts, maxPxCount);

@@ -50,6 +50,7 @@ import android.view.SubMenu;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TableLayout;
 import android.widget.TableRow;
@@ -120,6 +121,22 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 	{
 		ThemeHelper.setTheme(this, R.style.Playback);
 		super.onCreate(icicle);
+
+		// Let this open directly over the lock screen (e.g. tapping the
+		// notification or a widget) instead of bouncing through an unlock
+		// prompt first. This is always in response to the user tapping
+		// something, so it doesn't need USE_FULL_SCREEN_INTENT - that
+		// permission is only required for the OS auto-launching an activity
+		// with no user interaction at all (like an incoming call).
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+			setShowWhenLocked(true);
+			setTurnScreenOn(true);
+		} else {
+			getWindow().addFlags(
+				WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+				| WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+				| WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+		}
 
 		setTitle(R.string.playback_view);
 

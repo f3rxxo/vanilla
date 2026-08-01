@@ -101,6 +101,8 @@ public class MediaSessionTracker {
 		final boolean playing = (state & PlaybackService.FLAG_PLAYING) != 0;
 		final PlaybackService service = PlaybackService.get(mContext);
 
+		android.util.Log.d("VanillaDebug", "MediaSessionTracker.updateSession: song=" + (song == null ? "null" : song.title) + " playing=" + playing + " position=" + service.getPosition() + " at " + System.currentTimeMillis());
+
 		PlaybackStateCompat playbackState = new PlaybackStateCompat.Builder()
 			.setState(playing ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED,
 					  service.getPosition(), 1.0f)
@@ -132,6 +134,7 @@ public class MediaSessionTracker {
 				metadataBuilder.putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, service.getTimelineLength());
 			}
 			mMediaSession.setMetadata(metadataBuilder.build());
+			android.util.Log.d("VanillaDebug", "MediaSessionTracker.updateSession: setMetadata() called with title=" + song.title + " at " + System.currentTimeMillis());
 		}
 
 		mMediaSession.setPlaybackState(playbackState);

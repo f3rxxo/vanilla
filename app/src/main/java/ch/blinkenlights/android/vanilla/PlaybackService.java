@@ -1149,6 +1149,7 @@ public final class PlaybackService extends Service
 
 	private void broadcastChange(int state, Song song, long uptime)
 	{
+		Log.d("VanillaDebug", "broadcastChange: ENTER state=" + state + " song=" + (song == null ? "null" : song.title) + " at " + System.currentTimeMillis());
 		if (state != -1) {
 			ArrayList<TimelineCallback> list = sCallbacks;
 			for (int i = list.size(); --i != -1; )
@@ -1176,6 +1177,7 @@ public final class PlaybackService extends Service
 		// moved on by the time this message is processed, which was
 		// showing stale/wrong metadata on the lock screen widget.
 		Song sessionSong = (song != null) ? song : mCurrentSong;
+		Log.d("VanillaDebug", "broadcastChange: updateSession(" + (sessionSong == null ? "null" : sessionSong.title) + ") at " + System.currentTimeMillis());
 		mRemoteControlClient.updateRemote(sessionSong, mState, mForceNotificationVisible);
 		mMediaSessionTracker.updateSession(sessionSong, mState);
 
@@ -1261,6 +1263,7 @@ public final class PlaybackService extends Service
 	private void updateNotification(Song song)
 	{
 		if (song != null) {
+			Log.d("VanillaDebug", "updateNotification: POSTING notification for " + song.title + " at " + System.currentTimeMillis());
 			// We always update the notification, even if we are about to cancel it as it may still stick around
 			// for a few seconds and we want to ensure that we are showing the correct state.
 			mNotificationHelper.notify(NOTIFICATION_ID, createNotification(song, mState));
@@ -1268,6 +1271,7 @@ public final class PlaybackService extends Service
 		if (!(mForceNotificationVisible ||
 			 mNotificationVisibility == VISIBILITY_ALWAYS ||
 			 mNotificationVisibility == VISIBILITY_WHEN_PLAYING && (mState & FLAG_PLAYING) != 0)) {
+			Log.d("VanillaDebug", "updateNotification: CANCELLING notification right after posting (song=" + (song == null ? "null" : song.title) + ")");
 			mNotificationHelper.cancel(NOTIFICATION_ID);
 		}
 	}
@@ -1408,6 +1412,7 @@ public final class PlaybackService extends Service
 
 		Song song = mTimeline.shiftCurrentSong(delta);
 		mCurrentSong = song;
+		Log.d("VanillaDebug", "setCurrentSong: delta=" + delta + " -> song=" + (song == null ? "null" : song.title) + " (mCurrentSong now set)");
 		if (song == null) {
 			if (MediaUtils.isSongAvailable(getApplicationContext())) {
 				int flag = finishAction(mState) == SongTimeline.FINISH_RANDOM ? FLAG_ERROR : FLAG_EMPTY_QUEUE;
@@ -1433,11 +1438,13 @@ public final class PlaybackService extends Service
 		mMediaPlayerInitialized = false;
 		mHandler.sendMessage(mHandler.obtainMessage(MSG_PROCESS_SONG, song));
 		mHandler.sendMessage(mHandler.obtainMessage(MSG_BROADCAST_CHANGE, -1, 0, new TimestampedObject(song)));
+		Log.d("VanillaDebug", "setCurrentSong: queued MSG_PROCESS_SONG + MSG_BROADCAST_CHANGE for " + (song == null ? "null" : song.title) + " at " + System.currentTimeMillis());
 		return song;
 	}
 
 	private void processSong(Song song)
 	{
+		Log.d("VanillaDebug", "processSong: ENTER for " + song.title + " at " + System.currentTimeMillis() + " (mCurrentSong is currently " + (mCurrentSong == null ? "null" : mCurrentSong.title) + ")");
 		/* Save our 'current' state as the try block may set the ERROR flag (which clears the PLAYING flag */
 		boolean playing = (mState & FLAG_PLAYING) != 0;
 
@@ -1495,6 +1502,7 @@ public final class PlaybackService extends Service
 
 		}
 
+		Log.d("VanillaDebug", "processSong: about to updateNotification(" + song.title + ") at " + System.currentTimeMillis());
 		updateNotification(song);
 
 	}

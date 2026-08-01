@@ -256,10 +256,16 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 		new Thread(new Runnable() {
 			@Override
 			public void run() {
-				// NOTE: getLargeCover() returns a bitmap owned by Song's
-				// shared static cache, not a fresh copy - it must never be
-				// recycled here, only read from.
-				Bitmap coverArt = song == null ? null : song.getLargeCover(FullPlaybackActivity.this);
+				// Use the small cover variant: this only feeds a heavily
+				// blurred background, so decoding (and Palette analyzing) a
+				// large bitmap here was wasted work and likely the biggest
+				// remaining chunk of the update delay. The sharp foreground
+				// art is unaffected - CoverView fetches its own copy at the
+				// resolution it actually needs.
+				// NOTE: like getLargeCover(), this returns a bitmap owned by
+				// Song's shared static cache, not a fresh copy - it must
+				// never be recycled here, only read from.
+				Bitmap coverArt = song == null ? null : song.getSmallCover(FullPlaybackActivity.this);
 				updateDynamicBackground(coverArt);
 			}
 		}).start();

@@ -318,6 +318,15 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 		if (Build.VERSION.SDK_INT >= 21) {
 			window.setNavigationBarColor(Color.TRANSPARENT);
 		}
+		if (Build.VERSION.SDK_INT >= 29) {
+			// Setting a transparent color alone isn't enough: Android
+			// automatically draws its own translucent contrast scrim behind
+			// the gesture nav bar for legibility, on top of whatever color
+			// you set, unless this is explicitly turned off. This was the
+			// visible colored strip at the very bottom of the screen.
+			window.setNavigationBarContrastEnforced(false);
+			window.setStatusBarContrastEnforced(false);
+		}
 		if (getActionBar() != null) {
 			getActionBar().hide();
 		}
@@ -373,7 +382,7 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 				// NOTE: like getLargeCover(), this returns a bitmap owned by
 				// Song's shared static cache, not a fresh copy - it must
 				// never be recycled here, only read from.
-				Bitmap coverArt = song == null ? null : song.getSmallCover(FullPlaybackActivity.this);
+				Bitmap coverArt = song == null ? null : song.getLargeCover(FullPlaybackActivity.this);
 				updateDynamicBackground(coverArt);
 			}
 		}).start();
@@ -446,7 +455,7 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 				canvas.drawRect(0, 0, width, height, paint);
 
 				// 4. Apply a heavy blur to bleed the edges seamlessly
-				Bitmap blurredBg = blurBitmap(gradientMesh, 8);
+				Bitmap blurredBg = blurBitmap(gradientMesh, 10);
 
 				// 5. Apply a slight dark tint layer so white text/controls remain readable
 				Canvas finalCanvas = new Canvas(blurredBg);

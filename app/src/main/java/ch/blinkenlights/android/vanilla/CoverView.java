@@ -293,6 +293,16 @@ public final class CoverView extends View implements Handler.Callback {
 		if (mPendingQuery && width != 0 && height != 0) {
 			mPendingQuery = false;
 			querySongs();
+		} else if (width != 0 && height != 0 && (width != oldWidth || height != oldHeight)) {
+			// The view resized after already having a valid size once
+			// before (not just the initial zero -> real transition above).
+			// This happens with edge-to-edge layouts: the first layout
+			// pass can measure a shorter height before window insets fully
+			// settle, generating and caching a bitmap at that size: without
+			// this, it would never get regenerated for the final, larger
+			// size, leaving a gap where the view grew.
+			mBitmapBucket.clear();
+			querySongs();
 		}
 	}
 

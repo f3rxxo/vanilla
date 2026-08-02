@@ -279,6 +279,22 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 	private void setupEdgeToEdge()
 	{
 		Window window = getWindow();
+
+		// Let content draw genuinely behind the status/nav bars, not just
+		// make their color transparent. Without this, Android still
+		// auto-insets the content view below the status bar, leaving a gap
+		// there filled by the plain window background instead of the art
+		// continuing through - this was the source of the grey bezel at the
+		// top of the screen. Using the direct platform method (API 30+)
+		// rather than the deprecated systemUiVisibility flags: those caused
+		// a real rendering bug earlier, but that bug turned out later to be
+		// an unrelated NullPointerException crash, not actually caused by
+		// those flags - so this is worth trying properly now with the
+		// modern, non-deprecated API.
+		if (Build.VERSION.SDK_INT >= 30) {
+			window.setDecorFitsSystemWindows(false);
+		}
+
 		window.setStatusBarColor(Color.TRANSPARENT);
 		if (Build.VERSION.SDK_INT >= 21) {
 			window.setNavigationBarColor(Color.TRANSPARENT);

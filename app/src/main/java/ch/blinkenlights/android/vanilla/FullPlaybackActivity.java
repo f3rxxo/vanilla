@@ -310,6 +310,15 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 		View slidingView = findViewById(R.id.sliding_view);
 		if (slidingView != null) {
 			slidingView.setBackgroundColor(Color.TRANSPARENT);
+			// The text-ghosting bug affects the elapsed-time counter (which
+			// updates every second, completely unrelated to song changes)
+			// just as much as song-change text - ruling out a fix targeted
+			// only at specific update call sites. Forcing software
+			// rendering here sidesteps GPU hardware-layer caching, which
+			// is the most likely actual mechanism: with this many
+			// overlapping transparent views, a stale cached layer can be
+			// shown instead of a fresh one being composited.
+			slidingView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
 		}
 
 		View seekBar = findViewById(R.id.fullscreen_seek_bar);

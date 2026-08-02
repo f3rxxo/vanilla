@@ -235,6 +235,39 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 		mCoverLongPressAction = Action.getAction(settings, PrefKeys.COVER_LONGPRESS_ACTION, PrefDefaults.COVER_LONGPRESS_ACTION);
 	}
 
+	@Override
+	public void onResume()
+	{
+		super.onResume();
+
+		// Re-check lock state every time this becomes visible again: if
+		// this activity instance was already running (e.g. opened via
+		// normal in-app navigation while unlocked) and the device gets
+		// locked/unlocked while it's showing - screen off then back on -
+		// onCreate() never runs again, since setShowWhenLocked() keeps this
+		// same instance visible right through that, instead of recreating
+		// it. Without this, the lock-vs-in-app style choice made once in
+		// onCreate() goes stale and never updates.
+		if (mDisplayMode == DISPLAY_INFO_FULLSCREEN) {
+			KeyguardManager keyguardManager = (KeyguardManager)getSystemService(KEYGUARD_SERVICE);
+			boolean isLocked = keyguardManager != null && keyguardManager.isKeyguardLocked();
+			if (isLocked != mOpenedFromLockScreen) {
+				mOpenedFromLockScreen = isLocked;
+				if (mCoverView != null) {
+					mCoverView.setStyle(mOpenedFromLockScreen ? CoverBitmap.STYLE_FULLSCREEN_CROP : CoverBitmap.STYLE_FULLSCREEN);
+				}
+				if (mOpenedFromLockScreen) {
+					// Crop-fill already covers the whole screen - clear any
+					// blurred background so it doesn't show through or
+					// waste work maintaining it.
+					getWindow().setBackgroundDrawable(null);
+				} else if (mCurrentSong != null) {
+					updateFullscreenBackground(mCurrentSong);
+				}
+			}
+		}
+	}
+
 	/**
 	 * Makes the system status/navigation bars transparent and hides the
 	 * action bar, so the blurred background reaches the true screen edges

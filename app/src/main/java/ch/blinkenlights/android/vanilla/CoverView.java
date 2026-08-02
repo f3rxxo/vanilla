@@ -158,6 +158,21 @@ public final class CoverView extends View implements Handler.Callback {
 	}
 
 	/**
+	 * Changes the cover style after setup(), e.g. when the same activity
+	 * instance needs to switch appearance without being recreated (see
+	 * FullPlaybackActivity's lock-screen-vs-in-app style switch). Clears any
+	 * bitmaps already cached for the old style so they get regenerated
+	 * rather than showing stale content.
+	 */
+	public void setStyle(int style) {
+		if (mCoverStyle == style)
+			return;
+		mCoverStyle = style;
+		mBitmapBucket.clear();
+		querySongs();
+	}
+
+	/**
 	 * Sent if the songs timeline changed and we should check if
 	 * mCacheBitmap is stale.
 	 * Just calls querySongsInternal() via handler to ensure
@@ -520,6 +535,19 @@ public final class CoverView extends View implements Handler.Callback {
 		 * Constructor for BitmapBucket
 		 */
 		public BitmapBucket() {
+		}
+
+		/**
+		 * Forgets all cached songs/bitmaps, forcing the next querySongs()
+		 * to regenerate everything from scratch. Used when the cover style
+		 * changes after setup() - cached bitmaps from the old style would
+		 * otherwise keep showing since they're keyed by song, not style.
+		 */
+		public void clear() {
+			for (int i = 0; i < mCacheSongs.length; i++) {
+				mCacheSongs[i] = null;
+				mCacheBitmaps[i] = null;
+			}
 		}
 
 		public Song getSong(int i) {

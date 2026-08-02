@@ -260,11 +260,30 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 					// Crop-fill already covers the whole screen - clear any
 					// blurred background so it doesn't show through or
 					// waste work maintaining it.
-					getWindow().setBackgroundDrawable(null);
+					setFullscreenBackground(null);
 				} else if (mCurrentSong != null) {
 					updateFullscreenBackground(mCurrentSong);
 				}
 			}
+		}
+	}
+
+	/**
+	 * Applies a background drawable to the actual content view instead of
+	 * the window (Window.setBackgroundDrawable()). The window background is
+	 * a separate compositing surface from the content view tree, and
+	 * redraws independently of it - changing it was racing with the
+	 * content view's own draw pass (title/artist/album text, the seek bar),
+	 * occasionally catching a frame mid-transition and showing old and new
+	 * content blended together. Setting it on the content view instead puts
+	 * it in the same draw cycle as everything else, avoiding that race
+	 * entirely.
+	 */
+	private void setFullscreenBackground(android.graphics.drawable.Drawable drawable)
+	{
+		View content = findViewById(android.R.id.content);
+		if (content != null) {
+			content.setBackground(drawable);
 		}
 	}
 
@@ -372,7 +391,7 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 			runOnUiThread(new Runnable() {
 				@Override
 				public void run() {
-					getWindow().setBackgroundDrawable(new GradientDrawable(
+					setFullscreenBackground(new GradientDrawable(
 						GradientDrawable.Orientation.TL_BR,
 						new int[]{ 0xff121212, 0xff1c1c1e }));
 				}
@@ -439,7 +458,7 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 					@Override
 					public void run() {
 						BitmapDrawable backgroundDrawable = new BitmapDrawable(getResources(), result);
-						getWindow().setBackgroundDrawable(backgroundDrawable);
+						setFullscreenBackground(backgroundDrawable);
 					}
 				});
 			}
@@ -567,14 +586,11 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 			getWindow().getDecorView().invalidate();
 			getWindow().getDecorView().requestLayout();
 			if (!mOpenedFromLockScreen) {
-				// TEMPORARILY DISABLED for diagnosis: the blur/Palette
-				// background pipeline is the prime suspect for the
-				// real-time text-ghosting bug (it's the one thing that
-				// differs between "no album art = fine" and "album art +
-				// fullscreen mode = ghosts"). Commented out rather than
-				// deleted so it's a one-line change to restore once we
-				// confirm or rule this out.
-				// updateFullscreenBackground(song);
+				// Re-enabled: was temporarily disabled to isolate the
+				// ghosting bug. Confirmed the window-background approach
+				// was the cause; now uses setFullscreenBackground() (the
+				// content view) instead of Window.setBackgroundDrawable().
+				updateFullscreenBackground(song);
 			}
 		}
 

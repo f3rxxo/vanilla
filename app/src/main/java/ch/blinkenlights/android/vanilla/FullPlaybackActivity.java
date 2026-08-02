@@ -567,11 +567,14 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 			getWindow().getDecorView().invalidate();
 			getWindow().getDecorView().requestLayout();
 			if (!mOpenedFromLockScreen) {
-				// The lock screen view uses crop-fill art, which already
-				// covers the entire screen - no letterbox gap, so no
-				// background layer (and no async Palette/blur pipeline) is
-				// needed there at all.
-				updateFullscreenBackground(song);
+				// TEMPORARILY DISABLED for diagnosis: the blur/Palette
+				// background pipeline is the prime suspect for the
+				// real-time text-ghosting bug (it's the one thing that
+				// differs between "no album art = fine" and "album art +
+				// fullscreen mode = ghosts"). Commented out rather than
+				// deleted so it's a one-line change to restore once we
+				// confirm or rule this out.
+				// updateFullscreenBackground(song);
 			}
 		}
 

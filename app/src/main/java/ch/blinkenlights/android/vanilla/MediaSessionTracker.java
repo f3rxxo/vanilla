@@ -124,7 +124,7 @@ public class MediaSessionTracker {
 			// a 1-2MB+ bitmap being pushed through repeatedly, which is a
 			// plausible source of the album-art-specific lag reported
 			// (no album art => tiny/no payload => always fast and correct).
-			final Bitmap cover = song.getSmallCover(mContext);
+			final Bitmap cover = song.getMediumCover(mContext);
 			MediaMetadataCompat.Builder metadataBuilder = new MediaMetadataCompat.Builder()
 				.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, song.artist)
 				.putString(MediaMetadataCompat.METADATA_KEY_ALBUM, song.album)

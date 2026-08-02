@@ -30,7 +30,6 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.BitmapShader;
 import android.graphics.Canvas;
-import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -368,17 +367,11 @@ public final class CoverBitmap {
 			scaled.recycle();
 		}
 
-		// Subtle gradient darkening only the bottom third, where the
-		// title/artist/album text and controls sit - not the whole image.
-		// Keeps bright/busy artwork from washing out text without
-		// darkening the art itself the way a full-image scrim would.
-		float scrimStart = height * 0.6f;
-		Paint scrimPaint = new Paint();
-		scrimPaint.setShader(new LinearGradient(
-			0, scrimStart, 0, height,
-			0x00000000, 0xB0000000,
-			Shader.TileMode.CLAMP));
-		canvas.drawRect(0, scrimStart, width, height, scrimPaint);
+		// Uniform semi-transparent black tint across the whole image, so
+		// the art stays edge-to-edge even with controls hidden (via the
+		// swipe gesture) rather than a bottom-only gradient that left an
+		// empty-looking black band once there was no text to protect there.
+		canvas.drawColor(0x66000000);
 
 		return bitmap;
 	}

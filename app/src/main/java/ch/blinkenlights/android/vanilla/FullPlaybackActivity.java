@@ -248,22 +248,29 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 		// same instance visible right through that, instead of recreating
 		// it. Without this, the lock-vs-in-app style choice made once in
 		// onCreate() goes stale and never updates.
+		//
+		// This always re-applies the correct state for the CURRENT lock
+		// status, rather than only reacting when it detects a change from
+		// last time: if that change-tracking ever got out of sync for any
+		// reason, a purely reactive check would never fire again and the
+		// wrong background (e.g. the in-app blurred one) would stay stuck
+		// on the lock screen indefinitely. This costs nothing extra when
+		// nothing actually changed - setStyle() already no-ops if the style
+		// is already correct.
 		if (mDisplayMode == DISPLAY_INFO_FULLSCREEN) {
 			KeyguardManager keyguardManager = (KeyguardManager)getSystemService(KEYGUARD_SERVICE);
 			boolean isLocked = keyguardManager != null && keyguardManager.isKeyguardLocked();
-			if (isLocked != mOpenedFromLockScreen) {
-				mOpenedFromLockScreen = isLocked;
-				if (mCoverView != null) {
-					mCoverView.setStyle(mOpenedFromLockScreen ? CoverBitmap.STYLE_FULLSCREEN_CROP : CoverBitmap.STYLE_FULLSCREEN);
-				}
-				if (mOpenedFromLockScreen) {
-					// Crop-fill already covers the whole screen - clear any
-					// blurred background so it doesn't show through or
-					// waste work maintaining it.
-					setFullscreenBackground(null);
-				} else if (mCurrentSong != null) {
-					updateFullscreenBackground(mCurrentSong);
-				}
+			mOpenedFromLockScreen = isLocked;
+			if (mCoverView != null) {
+				mCoverView.setStyle(mOpenedFromLockScreen ? CoverBitmap.STYLE_FULLSCREEN_CROP : CoverBitmap.STYLE_FULLSCREEN);
+			}
+			if (mOpenedFromLockScreen) {
+				// Crop-fill already covers the whole screen - clear any
+				// blurred background so it doesn't show through or
+				// waste work maintaining it.
+				setFullscreenBackground(null);
+			} else if (mCurrentSong != null) {
+				updateFullscreenBackground(mCurrentSong);
 			}
 		}
 	}
@@ -382,7 +389,7 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 				// NOTE: like getLargeCover(), this returns a bitmap owned by
 				// Song's shared static cache, not a fresh copy - it must
 				// never be recycled here, only read from.
-				Bitmap coverArt = song == null ? null : song.getLargeCover(FullPlaybackActivity.this);
+				Bitmap coverArt = song == null ? null : song.getSmallCover(FullPlaybackActivity.this);
 				updateDynamicBackground(coverArt);
 			}
 		}).start();
@@ -455,7 +462,7 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 				canvas.drawRect(0, 0, width, height, paint);
 
 				// 4. Apply a heavy blur to bleed the edges seamlessly
-				Bitmap blurredBg = blurBitmap(gradientMesh, 10);
+				Bitmap blurredBg = blurBitmap(gradientMesh, 8);
 
 				// 5. Apply a slight dark tint layer so white text/controls remain readable
 				Canvas finalCanvas = new Canvas(blurredBg);

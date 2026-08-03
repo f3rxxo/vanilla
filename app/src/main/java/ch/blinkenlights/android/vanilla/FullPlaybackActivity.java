@@ -285,9 +285,21 @@ public class FullPlaybackActivity extends SlidingPlaybackActivity
 	 * content blended together. Setting it on the content view instead puts
 	 * it in the same draw cycle as everything else, avoiding that race
 	 * entirely.
+	 *
+	 * Also guards against a stale async result: the Palette/blur pipeline
+	 * that produces a non-null drawable runs on a background thread and can
+	 * take a moment. If the device gets locked while that's in flight,
+	 * onResume() already clears the background for the lock screen - but
+	 * the in-flight computation has no way of knowing that happened, and
+	 * would otherwise overwrite the clear with its (now stale) result once
+	 * it finally completes. A null drawable (explicitly clearing) always
+	 * goes through regardless, since clearing is never wrong.
 	 */
 	private void setFullscreenBackground(android.graphics.drawable.Drawable drawable)
 	{
+		if (drawable != null && mOpenedFromLockScreen) {
+			return;
+		}
 		View content = findViewById(android.R.id.content);
 		if (content != null) {
 			content.setBackground(drawable);

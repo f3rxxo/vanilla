@@ -356,9 +356,10 @@ THE SOFTWARE.
 	<string name="smart_playlists_title">Smart playlists</string>
 	<string name="smart_playlists_summary">Automatically maintain Recently played, On repeat, Hidden gems and Recently added playlists</string>
 	<string name="smart_playlist_recently_played">Recently played</string>
-	<string name="smart_playlist_on_repeat_week">On repeat (This week)</string>
-	<string name="smart_playlist_on_repeat_month">On repeat (This month)</string>
-	<string name="smart_playlist_on_repeat_alltime">On repeat (All time)</string>
+	<string name="smart_playlist_on_repeat">On repeat</string>
+	<string name="on_repeat_timeframe_week">This week</string>
+	<string name="on_repeat_timeframe_month">This month</string>
+	<string name="on_repeat_timeframe_alltime">All time</string>
 	<string name="smart_playlist_hidden_gems">Hidden gems</string>
 	<string name="smart_playlist_recently_added">Recently added</string>
 

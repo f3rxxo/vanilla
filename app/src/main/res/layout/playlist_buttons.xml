@@ -25,17 +25,29 @@ THE SOFTWARE.
 	android:layout_width="fill_parent"
 	android:layout_height="fill_parent"
 	android:padding="3dip"
-	android:orientation="horizontal">
-	<Button
-		android:id="@+id/edit"
-		android:layout_width="0px"
+	android:orientation="vertical">
+	<Spinner
+		android:id="@+id/timeframe_spinner"
+		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
-		android:layout_weight="1"
-		android:text="@string/edit" />
-	<Button
-		android:id="@+id/delete"
-		android:layout_width="0px"
+		android:layout_gravity="center_horizontal"
+		android:layout_marginBottom="3dip"
+		android:visibility="gone" />
+	<LinearLayout
+		android:layout_width="fill_parent"
 		android:layout_height="wrap_content"
-		android:layout_weight="1"
-		android:text="@string/delete" />
+		android:orientation="horizontal">
+		<Button
+			android:id="@+id/edit"
+			android:layout_width="0px"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:text="@string/edit" />
+		<Button
+			android:id="@+id/delete"
+			android:layout_width="0px"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:text="@string/delete" />
+	</LinearLayout>
 </LinearLayout>

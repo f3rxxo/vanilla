@@ -74,6 +74,11 @@ public class SmartPlaylistHelper {
 	/** "This month" window, in seconds. */
 	public static final long WINDOW_THIS_MONTH = 30L * 24 * 60 * 60;
 
+	/** Valid values for the "On repeat" timeframe preference/selector. */
+	public static final String TIMEFRAME_WEEK = "week";
+	public static final String TIMEFRAME_MONTH = "month";
+	public static final String TIMEFRAME_ALLTIME = "alltime";
+
 	/**
 	 * Songs played most often within the given time window, based on actual
 	 * per-play history (not just the running lifetime total), most played
@@ -103,6 +108,22 @@ public class SmartPlaylistHelper {
 	 */
 	public static ArrayList<Long> getOnRepeatSongsAllTime(Context context, int limit) {
 		return PlayCountsHelper.getTopSongs(context, limit <= 0 ? 100 : limit);
+	}
+
+	/**
+	 * Songs for the "On repeat" smart playlist under the given timeframe.
+	 *
+	 * @param timeframe one of {@link #TIMEFRAME_WEEK}, {@link #TIMEFRAME_MONTH}, {@link #TIMEFRAME_ALLTIME}
+	 * @param limit maximum number of songs to return, or 0 for no limit
+	 */
+	public static ArrayList<Long> getOnRepeatSongs(Context context, String timeframe, int limit) {
+		if (TIMEFRAME_MONTH.equals(timeframe)) {
+			return getOnRepeatSongsForWindow(context, limit, WINDOW_THIS_MONTH);
+		} else if (TIMEFRAME_ALLTIME.equals(timeframe)) {
+			return getOnRepeatSongsAllTime(context, limit);
+		} else {
+			return getOnRepeatSongsForWindow(context, limit, WINDOW_THIS_WEEK);
+		}
 	}
 
 	/**
@@ -151,16 +172,33 @@ public class SmartPlaylistHelper {
 	public static void refreshSmartPlaylists(Context context) {
 		refreshOne(context, context.getString(R.string.smart_playlist_recently_played),
 			getRecentlyPlayedSongs(context, SMART_PLAYLIST_LIMIT));
-		refreshOne(context, context.getString(R.string.smart_playlist_on_repeat_week),
-			getOnRepeatSongsForWindow(context, SMART_PLAYLIST_LIMIT, WINDOW_THIS_WEEK));
-		refreshOne(context, context.getString(R.string.smart_playlist_on_repeat_month),
-			getOnRepeatSongsForWindow(context, SMART_PLAYLIST_LIMIT, WINDOW_THIS_MONTH));
-		refreshOne(context, context.getString(R.string.smart_playlist_on_repeat_alltime),
-			getOnRepeatSongsAllTime(context, SMART_PLAYLIST_LIMIT));
+		android.content.SharedPreferences settings = SharedPrefHelper.getSettings(context);
+		String timeframe = settings.getString(PrefKeys.ON_REPEAT_TIMEFRAME, PrefDefaults.ON_REPEAT_TIMEFRAME);
+		refreshOne(context, context.getString(R.string.smart_playlist_on_repeat),
+			getOnRepeatSongs(context, timeframe, SMART_PLAYLIST_LIMIT));
 		refreshOne(context, context.getString(R.string.smart_playlist_hidden_gems),
 			getHiddenGemSongs(context, SMART_PLAYLIST_LIMIT));
 		refreshOne(context, context.getString(R.string.smart_playlist_recently_added),
 			getRecentlyAddedSongs(context, SMART_PLAYLIST_LIMIT));
+	}
+
+	/**
+	 * Rebuilds just the "On repeat" playlist for the given timeframe and
+	 * saves it as the new default timeframe for future automatic refreshes.
+	 * Used by the dropdown in the playlist view to switch timeframes on the
+	 * fly. Should be run on a background thread.
+	 *
+	 * @param timeframe one of {@link #TIMEFRAME_WEEK}, {@link #TIMEFRAME_MONTH}, {@link #TIMEFRAME_ALLTIME}
+	 * @return the (possibly new) id of the "On repeat" playlist, since
+	 * Playlist.createPlaylist() deletes and recreates it under the hood
+	 */
+	public static long refreshOnRepeat(Context context, String timeframe) {
+		SharedPrefHelper.getSettings(context).edit()
+			.putString(PrefKeys.ON_REPEAT_TIMEFRAME, timeframe)
+			.apply();
+		String name = context.getString(R.string.smart_playlist_on_repeat);
+		refreshOne(context, name, getOnRepeatSongs(context, timeframe, SMART_PLAYLIST_LIMIT));
+		return Playlist.getPlaylist(context, name);
 	}
 
 	private static void refreshOne(Context context, String playlistName, ArrayList<Long> songIds) {

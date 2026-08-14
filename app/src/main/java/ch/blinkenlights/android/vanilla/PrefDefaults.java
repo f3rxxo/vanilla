@@ -74,6 +74,7 @@ public class PrefDefaults {
 	public static final int     VOLUME_DURING_DUCKING = 50;
 	public static final int     AUTOPLAYLIST_PLAYCOUNTS = 0;
 	public static final boolean SMART_PLAYLISTS_ENABLED = false;
+	public static final String ON_REPEAT_TIMEFRAME = "week";
 	public static final boolean WALLPAPER_ALBUM_ART = false;
 	public static final boolean IGNORE_AUDIOFOCUS_LOSS = false;
 	public static final boolean ENABLE_SCROLL_TO_SONG = false;

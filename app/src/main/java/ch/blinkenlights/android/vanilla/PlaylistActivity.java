@@ -29,6 +29,7 @@ import ch.blinkenlights.android.vanilla.ext.CoordClickListener;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -98,6 +99,20 @@ public class PlaylistActivity extends Activity
 
 	private Button mEditButton;
 	private Button mDeleteButton;
+	/**
+	 * Timeframe selector shown only when viewing the "On repeat" smart
+	 * playlist - lets the timeframe be switched on the fly instead of
+	 * cluttering the playlist list with a separate entry per timeframe.
+	 */
+	private android.widget.Spinner mTimeframeSpinner;
+	/** Guards against the spurious onItemSelected() fired by setSelection(). */
+	private boolean mSuppressSpinnerCallback;
+	/** Timeframe values in the same order as the spinner's display labels. */
+	private static final String[] TIMEFRAME_VALUES = {
+		SmartPlaylistHelper.TIMEFRAME_WEEK,
+		SmartPlaylistHelper.TIMEFRAME_MONTH,
+		SmartPlaylistHelper.TIMEFRAME_ALLTIME
+	};
 
 	@Override
 	public void onCreate(Bundle state)
@@ -123,6 +138,16 @@ public class PlaylistActivity extends Activity
 		mEditButton.setOnClickListener(this);
 		mDeleteButton = (Button)header.findViewById(R.id.delete);
 		mDeleteButton.setOnClickListener(this);
+		mTimeframeSpinner = (android.widget.Spinner)header.findViewById(R.id.timeframe_spinner);
+		android.widget.ArrayAdapter<CharSequence> spinnerAdapter = new android.widget.ArrayAdapter<CharSequence>(
+			this, android.R.layout.simple_spinner_item,
+			new CharSequence[]{
+				getString(R.string.on_repeat_timeframe_week),
+				getString(R.string.on_repeat_timeframe_month),
+				getString(R.string.on_repeat_timeframe_alltime)
+			});
+		spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+		mTimeframeSpinner.setAdapter(spinnerAdapter);
 		view.addHeaderView(header, null, false);
 		mLooper = thread.getLooper();
 		mAdapter = new PlaylistAdapter(this, mLooper);
@@ -155,6 +180,63 @@ public class PlaylistActivity extends Activity
 		setTitle(title);
 		mPlaylistId = id;
 		mPlaylistName = title;
+
+		if (getString(R.string.smart_playlist_on_repeat).equals(title)) {
+			SharedPreferences settings = SharedPrefHelper.getSettings(this);
+			String currentTimeframe = settings.getString(PrefKeys.ON_REPEAT_TIMEFRAME, PrefDefaults.ON_REPEAT_TIMEFRAME);
+			int position = 0;
+			for (int i = 0; i < TIMEFRAME_VALUES.length; i++) {
+				if (TIMEFRAME_VALUES[i].equals(currentTimeframe)) {
+					position = i;
+					break;
+				}
+			}
+			// setSelection() would otherwise immediately fire
+			// onItemSelected() below for this same, already-correct value -
+			// suppress just that one spurious callback.
+			mSuppressSpinnerCallback = true;
+			mTimeframeSpinner.setSelection(position);
+			mTimeframeSpinner.setVisibility(View.VISIBLE);
+			mTimeframeSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+				@Override
+				public void onItemSelected(android.widget.AdapterView<?> parent, View v, int pos, long id) {
+					if (mSuppressSpinnerCallback) {
+						mSuppressSpinnerCallback = false;
+						return;
+					}
+					onTimeframeSelected(TIMEFRAME_VALUES[pos]);
+				}
+				@Override
+				public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+			});
+		} else {
+			mTimeframeSpinner.setVisibility(View.GONE);
+			mTimeframeSpinner.setOnItemSelectedListener(null);
+		}
+	}
+
+	/**
+	 * Rebuilds the "On repeat" playlist for the newly selected timeframe and
+	 * points this screen at the result. createPlaylist() deletes and
+	 * recreates the playlist under the hood, so the id changes each time -
+	 * the adapter needs the fresh id, not just a re-query of the old one.
+	 */
+	private void onTimeframeSelected(final String timeframe)
+	{
+		final Context appContext = getApplicationContext();
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				final long newId = SmartPlaylistHelper.refreshOnRepeat(appContext, timeframe);
+				runOnUiThread(new Runnable() {
+					@Override
+					public void run() {
+						mPlaylistId = newId;
+						mAdapter.setPlaylistId(newId);
+					}
+				});
+			}
+		}).start();
 	}
 
 	/**

@@ -81,6 +81,10 @@ enum Action {
 	 */
 	ClearQueue,
 	/**
+	 * Remove the already played songs (before the current song) from the queue.
+	 */
+	ClearPlayedSongs,
+	/**
 	 * Displays the queue
 	 */
 	ShowQueue,

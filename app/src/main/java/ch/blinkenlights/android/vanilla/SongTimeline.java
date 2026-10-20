@@ -902,6 +902,24 @@ public final class SongTimeline {
 	}
 
 	/**
+	 * Remove all songs before the current song (the already played ones),
+	 * keeping the current song and everything after it.
+	 */
+	public void clearPlayedSongs()
+	{
+		synchronized (this) {
+			if (mCurrentPos <= 0 || mCurrentPos > mSongs.size())
+				return;
+			saveActiveSongs();
+			mSongs.subList(0, mCurrentPos).clear();
+			mCurrentPos = 0;
+			broadcastChangedSongs();
+		}
+
+		changed();
+	}
+
+	/**
 	 * Empty the song queue (clear the whole queue).
 	 */
 	public void emptyQueue()

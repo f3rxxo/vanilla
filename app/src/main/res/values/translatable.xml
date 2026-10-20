@@ -41,6 +41,7 @@ THE SOFTWARE.
 	<string name="random_enabling">Random enabled</string>
 	<string name="song_load_failed">Failed to load track %s. It may be corrupt or missing.</string>
 	<string name="queue_cleared">Queue cleared.</string>
+	<string name="played_songs_cleared">Played songs cleared.</string>
 	<string name="cover_art">Cover art</string>
 	<string name="close_notification">Close notification</string>
 	<string name="_genre">genre</string>
@@ -331,6 +332,7 @@ THE SOFTWARE.
 	<string name="move_to_bottom">Move to bottom</string>
 	<string name="preferences_action_show_queue">Show queue</string>
 	<string name="preferences_action_clear_queue">Clear queue</string>
+	<string name="preferences_action_clear_played">Clear played songs</string>
 	<string name="preferences_action_enqueue_current_album">Enqueue album</string>
 	<string name="preferences_action_enqueue_current_artist">Enqueue artist</string>
 	<string name="preferences_action_enqueue_current_genre">Enqueue genre</string>

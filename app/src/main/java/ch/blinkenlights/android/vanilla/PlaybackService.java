@@ -2045,6 +2045,14 @@ public final class PlaybackService extends Service
 	}
 
 	/**
+	 * Remove the already played songs (before the current one) from the queue.
+	 */
+	public void clearPlayedSongs()
+	{
+		mTimeline.clearPlayedSongs();
+	}
+
+	/**
 	 * Empty the song queue.
 	 */
 	public void emptyQueue()
@@ -2455,6 +2463,10 @@ public final class PlaybackService extends Service
 		case ClearQueue:
 			clearQueue();
 			showToast(R.string.queue_cleared, Toast.LENGTH_SHORT);
+			break;
+		case ClearPlayedSongs:
+			clearPlayedSongs();
+			showToast(R.string.played_songs_cleared, Toast.LENGTH_SHORT);
 			break;
 		case ToggleControls:
 		case ShowQueue:
